@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/template-core",
+    "crates/template-cli",
+    "crates/template-py",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/example/template-python-rust-cmd"
+homepage = "https://github.com/example/template-python-rust-cmd"
+
+[workspace.dependencies]
+anyhow = "1"
+pyo3 = { version = "0.23", features = ["extension-module"] }

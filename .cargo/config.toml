@@ -1,0 +1,12 @@
+[profile.dev]
+debug = "line-tables-only"
+incremental = true
+
+[profile.debug]
+inherits = "dev"
+debug = "full"
+incremental = true
+
+[profile.test]
+debug = "line-tables-only"
+incremental = false

@@ -1,0 +1,17 @@
+[package]
+name = "template-py"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "PyO3 bindings for template-python-rust-cmd"
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+template_core = { package = "template-core", path = "../template-core" }
+pyo3 = { workspace = true }

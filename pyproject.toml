@@ -1,0 +1,36 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "template-python-rust-cmd"
+version = "0.1.0"
+description = "Skeleton for a Python package backed by a Rust CLI and PyO3 bindings"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+license-files = ["LICENSE"]
+authors = [{ name = "Maintainer", email = "maintainer@example.com" }]
+dependencies = []
+
+[project.scripts]
+template-python-rust-cmd = "template_python_rust_cmd.cli:main"
+
+[dependency-groups]
+dev = [
+    "maturin>=1.7,<2",
+    "pytest>=8.0.0",
+    "ruff>=0.8.0",
+]
+
+[tool.maturin]
+manifest-path = "crates/template-py/Cargo.toml"
+module-name = "template_python_rust_cmd._native"
+python-source = "src"
+features = ["pyo3/extension-module"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = ["-ra", "--strict-markers"]
+testpaths = ["tests"]
+pythonpath = ["src"]

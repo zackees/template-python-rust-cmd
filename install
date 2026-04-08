@@ -1,0 +1,19 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# ///
+from pathlib import Path
+
+
+def main() -> int:
+    root = Path(__file__).resolve().parent
+    print(f"bootstrap placeholder for {root.name}")
+    print("Expected responsibilities:")
+    print("- ensure uv is available")
+    print("- install or verify the pinned Rust toolchain")
+    print("- prepare a local editable Python/Rust dev environment")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
