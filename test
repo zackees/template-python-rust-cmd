@@ -1,9 +1,10 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.11"
-# ///
-from ci.test import main
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+#!/usr/bin/env bash
+# Thin wrapper: route to the canonical CI dispatcher's test gate.
+#
+# `./test` is a named build entry point (one of the documented places
+# where the maturin context is opted INTO — see ci/hooks/tool_guard.py's
+# BUILD_ENTRY_POINTS). The test gate runs `cargo test` + `maturin
+# develop` + `pytest`.
+set -euo pipefail
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$script_dir/ci.sh" test

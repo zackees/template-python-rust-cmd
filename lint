@@ -1,9 +1,11 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.11"
-# ///
-from ci.lint import main
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+#!/usr/bin/env bash
+# Thin wrapper: route to the canonical CI dispatcher.
+#
+# `./lint` is preserved as muscle memory; the actual implementation is
+# `./ci.sh fmt && ./ci.sh clippy && ./ci.sh ruff`. Anything new you'd
+# want under `./lint` belongs as a gate under `ci/gates/`.
+set -euo pipefail
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$script_dir/ci.sh" fmt
+"$script_dir/ci.sh" clippy
+"$script_dir/ci.sh" ruff
