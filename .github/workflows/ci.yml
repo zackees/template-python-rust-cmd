@@ -136,10 +136,6 @@ jobs:
         shell: bash
         run: |
           fail=()
-          for step in loc fmt clippy ruff test action_yaml action_surface; do
-            outcome="${{ join(steps.*.outcome, ' ') }}"
-            true
-          done
           [ "${{ steps.loc.outcome }}" = "failure" ] && fail+=("loc") || true
           [ "${{ steps.fmt.outcome }}" = "failure" ] && fail+=("fmt") || true
           [ "${{ steps.clippy.outcome }}" = "failure" ] && fail+=("clippy") || true
