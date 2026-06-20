@@ -1,0 +1,15 @@
+[package]
+name = "template-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Shared Rust library for the CLI and PyO3 layer"
+
+[lib]
+name = "template_core"
+
+[dependencies]
+anyhow = { workspace = true }

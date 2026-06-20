@@ -1,0 +1,165 @@
+# Canonical CI workflow for hybrid Rust+Python repos.
+#
+# Shape (per zackees/zccache#835):
+#   - One matrix entry per platform target.
+#   - Every gate is a separate step calling `./ci.sh <gate>` — no
+#     multi-line shell embedded in this file. Logic lives in
+#     `ci/gates/<name>.py`.
+#   - continue-on-error: true on every gate except `build` (fatal).
+#   - Final `report-failures` step collects step outcomes and exits
+#     non-zero with the list of failed gates.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs of the same ref so concurrent pushes don't pile
+# up runner time on PR-amend flurries.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86
+            runner: ubuntu-latest
+            rust_target: x86_64-unknown-linux-gnu
+          - target: linux-x86-musl
+            runner: ubuntu-latest
+            rust_target: x86_64-unknown-linux-musl
+          - target: linux-arm
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+          - target: linux-arm-musl
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-musl
+          - target: mac-x86
+            runner: macos-13
+            rust_target: x86_64-apple-darwin
+          - target: mac-arm
+            runner: macos-14
+            rust_target: aarch64-apple-darwin
+          - target: windows-x86
+            runner: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+          - target: windows-arm
+            runner: windows-11-arm
+            rust_target: aarch64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.13"
+
+      # PyO3 0.23 supports up to Python 3.13. Some runners (notably
+      # macos-14) default to Python 3.14, which fails pyo3-ffi's build
+      # script with "configured Python interpreter version (3.14) is
+      # newer than PyO3's maximum supported version (3.13)". Pin
+      # python3 -> 3.13 on PATH so pyo3's build.rs picks the right
+      # interpreter. Drop this once pyo3 is bumped past 0.24.
+      - name: Pin Python on PATH
+        shell: bash
+        run: |
+          uv python install 3.13
+          py="$(uv python find 3.13)"
+          echo "$(dirname "$py")" >> "$GITHUB_PATH"
+          echo "PYO3_PYTHON=$py" >> "$GITHUB_ENV"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+          components: clippy, rustfmt
+
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-${{ matrix.target }}-
+
+      - name: loc
+        id: loc
+        continue-on-error: true
+        shell: bash
+        run: ./ci.sh loc
+
+      - name: fmt
+        id: fmt
+        continue-on-error: true
+        shell: bash
+        run: ./ci.sh fmt
+
+      - name: clippy
+        id: clippy
+        continue-on-error: true
+        shell: bash
+        run: ./ci.sh clippy
+
+      - name: ruff
+        id: ruff
+        continue-on-error: true
+        shell: bash
+        run: ./ci.sh ruff
+
+      # build is fatal: every later gate produces noise against an
+      # uncompiled tree, so we don't continue-on-error here.
+      - name: build
+        id: build
+        shell: bash
+        run: ./ci.sh build
+
+      - name: test
+        id: test
+        continue-on-error: true
+        shell: bash
+        run: ./ci.sh test
+
+      - name: action-yaml
+        id: action_yaml
+        continue-on-error: true
+        shell: bash
+        run: ./ci.sh action_yaml
+
+      - name: action-surface
+        id: action_surface
+        continue-on-error: true
+        shell: bash
+        run: ./ci.sh action_surface
+
+      - name: report-failures
+        if: always()
+        shell: bash
+        run: |
+          fail=()
+          [ "${{ steps.loc.outcome }}" = "failure" ] && fail+=("loc") || true
+          [ "${{ steps.fmt.outcome }}" = "failure" ] && fail+=("fmt") || true
+          [ "${{ steps.clippy.outcome }}" = "failure" ] && fail+=("clippy") || true
+          [ "${{ steps.ruff.outcome }}" = "failure" ] && fail+=("ruff") || true
+          [ "${{ steps.test.outcome }}" = "failure" ] && fail+=("test") || true
+          [ "${{ steps.action_yaml.outcome }}" = "failure" ] && fail+=("action_yaml") || true
+          [ "${{ steps.action_surface.outcome }}" = "failure" ] && fail+=("action_surface") || true
+          if [ ${#fail[@]} -gt 0 ]; then
+            echo "FAILED: ${fail[*]}"
+            exit 1
+          fi
+          echo "All gates passed."
