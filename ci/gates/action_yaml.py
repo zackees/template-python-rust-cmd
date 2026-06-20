@@ -24,7 +24,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
+# `yaml` (PyYAML) is the only third-party dep this gate needs. It's
+# declared as a PEP 723 inline dep on `ci.py`, so `./ci.sh action_yaml`
+# always has it. The try/except keeps the module importable in the
+# pytest venv (which doesn't install pyyaml) so the contract test in
+# `tests/test_gates.py` can introspect `run()`'s signature; `run()`
+# fails fast with a clear message if pyyaml is unavailable at call time.
+try:
+    import yaml  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover
+    yaml = None  # type: ignore[assignment]
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -37,6 +46,7 @@ REQUIRED_TOP = ("name", "description", "runs")
 
 
 def _check_one(path: Path) -> list[str]:
+    assert yaml is not None  # guarded by run(); narrow for type-checkers
     errs: list[str] = []
     if not path.is_file():
         return [f"{path.relative_to(ROOT)}: missing"]
@@ -85,6 +95,12 @@ def _check_one(path: Path) -> list[str]:
 
 
 def run() -> int:
+    if yaml is None:
+        print(
+            "action_yaml: PyYAML not available. Run via `./ci.sh action_yaml` so the PEP 723 inline-deps path provides it.",
+            file=sys.stderr,
+        )
+        return 1
     all_errs: list[str] = []
     for path in ACTION_FILES:
         all_errs.extend(_check_one(path))
