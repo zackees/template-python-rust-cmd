@@ -57,8 +57,16 @@ def test_gate_exposes_run(name: str) -> None:
 def test_gate_run_signature_is_zero_arg(name: str) -> None:
     mod = importlib.import_module(f"ci.gates.{name}")
     sig = inspect.signature(mod.run)
-    required = [p for p in sig.parameters.values() if p.default is inspect.Parameter.empty and p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)]
-    assert not required, f"ci.gates.{name}.run must take no required arguments (found: {[p.name for p in required]})"
+    required = [
+        p
+        for p in sig.parameters.values()
+        if p.default is inspect.Parameter.empty
+        and p.kind
+        not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    ]
+    assert not required, (
+        f"ci.gates.{name}.run must take no required arguments (found: {[p.name for p in required]})"
+    )
 
 
 @pytest.mark.parametrize("name", GATE_NAMES)
@@ -67,4 +75,6 @@ def test_gate_run_returns_int_annotation(name: str) -> None:
     sig = inspect.signature(mod.run)
     ann = sig.return_annotation
     # Accept either `int` directly or the string "int" (PEP 563 future-annotations).
-    assert ann in (int, "int"), f"ci.gates.{name}.run should be annotated `-> int` (got {ann!r})"
+    assert ann in (int, "int"), (
+        f"ci.gates.{name}.run should be annotated `-> int` (got {ann!r})"
+    )

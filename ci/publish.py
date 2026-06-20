@@ -45,7 +45,9 @@ def main() -> int:
     args = parser.parse_args()
 
     if not _ENABLED:
-        print("publishing is disabled; please manually enable _ENABLED when you are ready")
+        print(
+            "publishing is disabled; please manually enable _ENABLED when you are ready"
+        )
         return 1
 
     if ensure_clean() != 0:

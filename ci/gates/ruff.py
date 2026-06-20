@@ -33,7 +33,21 @@ def _run(args: list[str]) -> int:
     if shutil.which("uv") is None:
         print("uv not on PATH; cannot run ruff gate", file=sys.stderr)
         return 1
-    cmd = ["uv", "run", "--no-project", "--with", RUFF_PIN, "ruff", *args]
+    # `--isolated` keeps ruff from walking up to a parent pyproject.toml
+    # (e.g., a workspace-level `[tool.ruff]` block that doesn't belong to
+    # this repo). Without it, a developer with the repo checked out under
+    # `~/dev/` sees green locally while CI fails — the two evaluate the
+    # same file under different effective config.
+    cmd = [
+        "uv",
+        "run",
+        "--no-project",
+        "--with",
+        RUFF_PIN,
+        "ruff",
+        *args,
+        "--isolated",
+    ]
     proc = subprocess.run(cmd, cwd=ROOT, check=False)
     return proc.returncode
 

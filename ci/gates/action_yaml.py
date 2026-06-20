@@ -67,20 +67,30 @@ def _check_one(path: Path) -> list[str]:
     if isinstance(runs, dict):
         using = runs.get("using")
         if using != "composite":
-            errs.append(f"{path.relative_to(ROOT)}: runs.using must be 'composite' (got {using!r})")
+            errs.append(
+                f"{path.relative_to(ROOT)}: runs.using must be 'composite' (got {using!r})"
+            )
         steps = runs.get("steps")
         if not isinstance(steps, list) or not steps:
-            errs.append(f"{path.relative_to(ROOT)}: runs.steps must be a non-empty list")
+            errs.append(
+                f"{path.relative_to(ROOT)}: runs.steps must be a non-empty list"
+            )
         else:
             for i, step in enumerate(steps):
                 if not isinstance(step, dict):
-                    errs.append(f"{path.relative_to(ROOT)}: runs.steps[{i}] not a mapping")
+                    errs.append(
+                        f"{path.relative_to(ROOT)}: runs.steps[{i}] not a mapping"
+                    )
                     continue
                 if "uses" not in step and "run" not in step:
-                    errs.append(f"{path.relative_to(ROOT)}: runs.steps[{i}] must have `uses` or `run`")
+                    errs.append(
+                        f"{path.relative_to(ROOT)}: runs.steps[{i}] must have `uses` or `run`"
+                    )
                 # Composite shell steps must declare `shell:`.
                 if "run" in step and "shell" not in step:
-                    errs.append(f"{path.relative_to(ROOT)}: runs.steps[{i}] is a `run:` step but is missing `shell:`")
+                    errs.append(
+                        f"{path.relative_to(ROOT)}: runs.steps[{i}] is a `run:` step but is missing `shell:`"
+                    )
 
     inputs = data.get("inputs")
     if isinstance(inputs, dict):
@@ -89,7 +99,9 @@ def _check_one(path: Path) -> list[str]:
                 errs.append(f"{path.relative_to(ROOT)}: inputs.{name} not a mapping")
                 continue
             if not spec.get("description"):
-                errs.append(f"{path.relative_to(ROOT)}: inputs.{name} missing description")
+                errs.append(
+                    f"{path.relative_to(ROOT)}: inputs.{name} missing description"
+                )
 
     return errs
 

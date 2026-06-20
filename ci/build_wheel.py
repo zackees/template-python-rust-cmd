@@ -13,7 +13,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_BIN_DIR = ROOT / "src" / "template_python_rust_cmd" / "_bin"
-CLI_TARGET_NAME = "template-cli.exe" if platform.system() == "Windows" else "template-cli"
+CLI_TARGET_NAME = (
+    "template-cli.exe" if platform.system() == "Windows" else "template-cli"
+)
 
 
 def run(cmd: list[str]) -> int:
@@ -71,7 +73,9 @@ def verify_artifacts() -> int:
         print("expected an sdist in dist/")
         return 1
 
-    expected_binary_suffix = "template-cli.exe" if platform.system() == "Windows" else "template-cli"
+    expected_binary_suffix = (
+        "template-cli.exe" if platform.system() == "Windows" else "template-cli"
+    )
     expected_entries = [
         "template_python_rust_cmd/_native",
         f"template_python_rust_cmd/_bin/{expected_binary_suffix}",

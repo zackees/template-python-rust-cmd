@@ -141,7 +141,12 @@ def _split_segments(command: str) -> list[str]:
             i += 1
             continue
         nxt = command[i + 1] if i + 1 < len(command) else ""
-        if ch in {";", "\r", "\n"} or (ch == "&" and nxt == "&") or (ch == "|" and nxt == "|") or ch == "|":
+        if (
+            ch in {";", "\r", "\n"}
+            or (ch == "&" and nxt == "&")
+            or (ch == "|" and nxt == "|")
+            or ch == "|"
+        ):
             segment = "".join(buf).strip()
             if segment:
                 out.append(segment)
