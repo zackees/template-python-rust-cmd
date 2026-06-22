@@ -8,7 +8,7 @@ Python-side test suite. Picked up by `pytest` per the configuration in
 | File              | What it tests                                                          |
 |-------------------|------------------------------------------------------------------------|
 | `test_bindings.py`| The PyO3 extension surface via `template_python_rust_cmd.bindings`.    |
-| `test_cli.py`     | The Python CLI shim's binary-discovery logic.                          |
+| `test_cli.py`     | `template-cli` is on PATH after `pip install` (or `uv tool install`) and `template-cli --version` exits 0. Skips when the binary hasn't been installed yet — the wheel-built binary is shipped as a raw script in `<name>-<ver>.data/scripts/` (#7), not as a Python launcher, so there's no source-tree path to probe. |
 | `test_version.py` | Package `__version__` is non-empty and matches the manifest.           |
 | `test_gates.py`   | Each gate registered in `ci.py::GATE_ORDER` is importable and exposes `def run() -> int`. The contract test for the gates infra itself. |
 
