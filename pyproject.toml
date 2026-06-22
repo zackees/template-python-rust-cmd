@@ -34,3 +34,19 @@ minversion = "8.0"
 addopts = ["-ra", "--strict-markers"]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+# Re-sync the editable install when these files change. Default uv
+# only watches pyproject.toml, so editable installs silently leave a
+# stale `_native.pyd` after .rs edits — `uv run` would then execute
+# against pre-edit Rust code with no visible warning. The globs trigger
+# re-sync on real source changes. Correctness, not raw speed, but the
+# fast iteration loop depends on it. See fbuild#661 / #2 item (7).
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "rust-toolchain.toml" },
+    { file = "crates/**/*.rs" },
+    { file = "crates/**/Cargo.toml" },
+]
