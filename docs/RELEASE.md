@@ -14,11 +14,14 @@ The canonical release sequence and the publish-script contract.
    ./ci.sh all
    uv run python ci/build_wheel.py
    ```
-   `build_wheel.py` stages the compiled CLI binary into
-   `src/template_python_rust_cmd/_bin/`, drives maturin to produce
-   wheel + sdist, asserts both the PyO3 extension module and the
-   staged binary are present in the wheel, then removes the staged
-   binary.
+   `build_wheel.py` builds the CLI via cargo into the pinned
+   `CARGO_TARGET_DIR`, drives maturin to produce the wheel + sdist
+   (PyO3 extension only), then post-processes the wheel to inject the
+   cargo-built `template-cli[.exe]` at
+   `template_python_rust_cmd-<ver>.data/scripts/` with a fresh RECORD
+   row. `verify_artifacts()` asserts both the PyO3 extension module
+   and the raw `template-cli` wheel script are present. There is no
+   `_bin/` staging step under the package source tree — see #7.
 4. Verify wheel and sdist by hand: `uv run --with twine twine check
    dist/*`.
 5. Set `_ENABLED = True` in `ci/publish.py` (deliberately not a CLI
