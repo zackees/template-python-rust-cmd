@@ -31,10 +31,6 @@ build/
 .ruff_cache/
 .mypy_cache/
 
-# Maturin staged native binary (build_wheel.py copies it in, then removes it)
-src/template_python_rust_cmd/_bin/*
-!src/template_python_rust_cmd/_bin/.gitkeep
-
 # Maturin extension module built in-place by `maturin develop`
 src/template_python_rust_cmd/_native*.pyd
 src/template_python_rust_cmd/_native*.so

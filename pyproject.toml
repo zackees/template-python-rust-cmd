@@ -13,8 +13,15 @@ license-files = ["LICENSE"]
 authors = [{ name = "Maintainer", email = "maintainer@example.com" }]
 dependencies = []
 
-[project.scripts]
-template-python-rust-cmd = "template_python_rust_cmd.cli:main"
+# `template-cli` on PATH is the native cargo-built binary itself,
+# injected into the wheel's <name>-<ver>.data/scripts/ directory by
+# ci/build_wheel.py's post-processing step. No Python wrapper sits in
+# front of it — `cmd → template-cli → stdout`. We don't use
+# `[project.scripts]` (PEP 621 / wheel console-scripts), because on
+# Windows pip generates a Python launcher .exe whose `os.execv` is
+# emulated as CreateProcess + parent-exit, racing the shell prompt
+# ahead of the child's stdout. See fbuild#747 and
+# zackees/template-python-rust-cmd#2 (items 1 + 10).
 
 [dependency-groups]
 dev = [
@@ -50,11 +57,14 @@ cache-keys = [
     { file = "crates/**/*.rs" },
     { file = "crates/**/Cargo.toml" },
 ]
-# Run the maturin build in the real repo, not a PEP 517 temp copy.
-# Isolation forces cargo to discard its incremental fingerprint cache
-# every install (the temp copy has a fresh, empty target/), and also
-# hides the staged binary from the wheel-side mtime-skip we want to
-# land in a follow-up PR. `maturin` already ships in the dev
-# dependency group, so the build env always has what it needs.
-# See fbuild#743 and zackees/template-python-rust-cmd#2 (item 5).
-no-build-isolation-package = ["template-python-rust-cmd"]
+# NOTE on `no-build-isolation-package`: fbuild disables PEP 517
+# isolation so its setup.py-based mtime-skip can see the staged binary
+# across `pip install` invocations. The maturin backend doesn't fit
+# that pattern cleanly — disabling isolation breaks the build env's
+# automatic maturin install (uv reuses a build env without maturin,
+# and uv's preview `extra-build-dependencies` mechanism is fragile
+# here). The CARGO_TARGET_DIR pin in ci/build_wheel.py already gives
+# us the cargo-incremental win without needing to touch isolation,
+# so we leave isolation on. See zackees/template-python-rust-cmd#2
+# (item 5) — we may revisit if the maturin/uv combo grows a clean
+# no-isolation story.

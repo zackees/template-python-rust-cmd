@@ -27,8 +27,3 @@ runs:
       shell: bash
       run: |
         uv cache prune --ci 2>/dev/null || true
-
-    - name: Remove staged binary
-      shell: bash
-      run: |
-        rm -rf "src/template_python_rust_cmd/_bin" 2>/dev/null || true
