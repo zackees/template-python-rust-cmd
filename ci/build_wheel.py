@@ -5,11 +5,25 @@
 """Build the template-python-rust-cmd wheel and sdist.
 
 Flow:
-  1. Build `template-cli` via cargo (release profile).
+  1. Build `template-cli` via cargo (release profile by default).
   2. Build the maturin wheel + sdist (PyO3 `_native` extension only).
   3. Inject the cargo-built `template-cli[.exe]` into the wheel's
      `<name>-<ver>.data/scripts/` directory and update RECORD.
   4. Verify the wheel contains both deliverables.
+
+Environment:
+  BUILD_PROFILE=dev   Build cargo + maturin with the dev profile
+                      instead of release. Combined with the
+                      `[profile.dev.package."*"] opt-level = 3` workspace
+                      override and the rust-lld linker
+                      (.cargo/config.toml), this is the fast local
+                      iteration path. CI / release wheels stay on
+                      `--release` (the default) because the env var is
+                      unset there. See
+                      zackees/template-python-rust-cmd#2 (item 9).
+  CARGO_TARGET_DIR    Honored normally; if unset, defaults to
+                      `~/.template-python-rust-cmd/cargo-target/wheel-build`
+                      so isolated builds keep their incremental cache.
 
 Why post-process instead of letting maturin handle the binary?
   Maturin doesn't ship raw binaries via the wheel scripts mechanism;
@@ -60,6 +74,27 @@ def _cargo_target_root() -> Path:
     return Path(target_dir) if target_dir else ROOT / "target"
 
 
+def _use_release_profile() -> bool:
+    """True when this build should produce a release-optimized binary.
+
+    Default is `True` — CI / release wheels are the dominant path through
+    this script and they must ship optimized binaries. Set
+    `BUILD_PROFILE=dev` (any case) to opt into a dev-profile build for
+    fast local iteration. Combined with `[profile.dev.package."*"]
+    opt-level = 3` in Cargo.toml and `rust-lld` linker in
+    `.cargo/config.toml`, this is the biggest unlock for the
+    Rust-edit → wheel round trip. Mirrors fbuild's
+    `FBUILD_BUILD_RELEASE=1` opt-in (but inverted: release is the
+    default here, dev is the opt-in). See
+    zackees/template-python-rust-cmd#2 (item 9).
+    """
+    return os.environ.get("BUILD_PROFILE", "").lower() not in ("dev", "debug")
+
+
+def _profile_subdir() -> str:
+    return "release" if _use_release_profile() else "debug"
+
+
 def _iter_cargo_inputs() -> list[Path]:
     patterns = (
         "Cargo.toml",
@@ -79,7 +114,7 @@ def _iter_cargo_inputs() -> list[Path]:
 # injection step needs the same path; passing it through the call chain
 # keeps `main()` straightforward.
 def _cargo_cache_path() -> Path:
-    return _cargo_target_root() / "release" / CLI_TARGET_NAME
+    return _cargo_target_root() / _profile_subdir() / CLI_TARGET_NAME
 
 
 def _staged_cache_is_up_to_date(cache_path: Path) -> bool:
@@ -118,11 +153,12 @@ def _find_cli_executable_from_json(stdout: str) -> Path | None:
 
 
 def _find_cli_executable_by_search() -> Path | None:
+    profile = _profile_subdir()
     target_root = _cargo_target_root()
-    candidates = [target_root / "release" / CLI_TARGET_NAME]
+    candidates = [target_root / profile / CLI_TARGET_NAME]
     if target_root.is_dir():
         for child in target_root.iterdir():
-            candidate = child / "release" / CLI_TARGET_NAME
+            candidate = child / profile / CLI_TARGET_NAME
             if candidate.is_file():
                 candidates.append(candidate)
     for candidate in candidates:
@@ -148,11 +184,12 @@ def build_cli_binary() -> Path:
     cmd = [
         "cargo",
         "build",
-        "--release",
         "-p",
         "template-cli",
         "--message-format=json-render-diagnostics",
     ]
+    if _use_release_profile():
+        cmd.insert(2, "--release")
     proc = subprocess.run(
         cmd,
         cwd=ROOT,
@@ -171,7 +208,8 @@ def build_cli_binary() -> Path:
         raise SystemExit(
             "cargo build succeeded but no `template-cli` binary was found.\n"
             "Searched cargo's JSON artifact stream and "
-            f"{_cargo_target_root()}/release/{CLI_TARGET_NAME} (plus per-target subdirs)."
+            f"{_cargo_target_root()}/{_profile_subdir()}/{CLI_TARGET_NAME} "
+            "(plus per-target subdirs)."
         )
     return binary
 
@@ -184,7 +222,6 @@ def build_python_artifacts() -> int:
         [
             "maturin",
             "build",
-            "--release",
             "--sdist",
             "--interpreter",
             sys.executable,
@@ -192,6 +229,8 @@ def build_python_artifacts() -> int:
             str(DIST_DIR),
         ]
     )
+    if _use_release_profile():
+        cmd.insert(cmd.index("--sdist"), "--release")
     return run(cmd)
 
 
