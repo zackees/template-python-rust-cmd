@@ -4,6 +4,7 @@
 # ///
 from __future__ import annotations
 
+import os
 import shutil
 import platform
 import subprocess
@@ -17,15 +18,38 @@ CLI_TARGET_NAME = (
     "template-cli.exe" if platform.system() == "Windows" else "template-cli"
 )
 
+# Pin cargo's target directory to a stable home-dir path so PEP 517
+# isolated builds reuse cargo's incremental fingerprint cache across
+# invocations. Without this, a `pip install .` (or `uv build`) that
+# copies the source tree to a temp dir throws `<temp>/target/` away
+# after each install — every install runs cargo cold (25-30s).
+#
+# Deliberately separate from `<repo>/target/` so iteration on
+# bare `cargo check` / `cargo build` doesn't churn the wheel-build
+# cache and vice versa. See FastLED/fbuild#743 and
+# zackees/template-python-rust-cmd#2 (item 4).
+WHEEL_BUILD_TARGET_DIR = (
+    Path.home() / ".template-python-rust-cmd" / "cargo-target" / "wheel-build"
+)
+os.environ.setdefault("CARGO_TARGET_DIR", str(WHEEL_BUILD_TARGET_DIR))
+
 
 def run(cmd: list[str]) -> int:
     return subprocess.run(cmd, cwd=ROOT, check=False).returncode
 
 
+def _cargo_target_root() -> Path:
+    """Return cargo's effective target root, respecting CARGO_TARGET_DIR."""
+    target_dir = os.environ.get("CARGO_TARGET_DIR")
+    if target_dir:
+        return Path(target_dir)
+    return ROOT / "target"
+
+
 def build_cli_binary() -> Path:
     if run(["cargo", "build", "--release", "-p", "template-cli"]) != 0:
         raise SystemExit(1)
-    binary = ROOT / "target" / "release" / CLI_TARGET_NAME
+    binary = _cargo_target_root() / "release" / CLI_TARGET_NAME
     if not binary.exists():
         raise SystemExit(f"expected native CLI binary at {binary}")
     return binary

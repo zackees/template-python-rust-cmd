@@ -50,3 +50,11 @@ cache-keys = [
     { file = "crates/**/*.rs" },
     { file = "crates/**/Cargo.toml" },
 ]
+# Run the maturin build in the real repo, not a PEP 517 temp copy.
+# Isolation forces cargo to discard its incremental fingerprint cache
+# every install (the temp copy has a fresh, empty target/), and also
+# hides the staged binary from the wheel-side mtime-skip we want to
+# land in a follow-up PR. `maturin` already ships in the dev
+# dependency group, so the build env always has what it needs.
+# See fbuild#743 and zackees/template-python-rust-cmd#2 (item 5).
+no-build-isolation-package = ["template-python-rust-cmd"]
