@@ -17,3 +17,14 @@ homepage = "https://github.com/example/template-python-rust-cmd"
 [workspace.dependencies]
 anyhow = "1"
 pyo3 = { version = "0.23", features = ["extension-module"] }
+
+# Keep third-party crates release-grade even in the dev profile.
+# `cargo build` (no --release) compiles first-party crates unoptimized
+# for fast iteration; third-party deps (pyo3, serde, etc.) are compiled
+# once and cached at opt-level 3 so the runtime hot path stays as fast
+# as a release build. This is what makes "default to dev for local
+# iteration" safe — see fbuild#744 (~5x faster Rust-edit rebuild on
+# fbuild's workspace) and zackees/template-python-rust-cmd#2.
+[profile.dev.package."*"]
+opt-level = 3
+debug = false
