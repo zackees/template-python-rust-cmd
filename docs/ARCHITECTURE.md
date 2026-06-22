@@ -6,7 +6,10 @@ Ship one Python wheel that exposes:
 
 - a Python import surface backed by `PyO3` (`template_python_rust_cmd._native`)
 - a command surface backed by a compiled Rust executable (`template-cli`,
-  packaged at `template_python_rust_cmd._bin/`)
+  shipped as a raw wheel script at
+  `template_python_rust_cmd-<ver>.data/scripts/` — pip extracts it
+  straight into the venv's `Scripts/`/`bin/` on install, no Python
+  launcher; see #7 for the Windows `os.execv` race that motivated this)
 
 A consumer installs a single distribution and gets both deliverables.
 A maintainer maintains one workspace and one CI matrix to feed both.
@@ -63,8 +66,13 @@ Five load-bearing pieces:
 
 - package version and re-exports (`__init__.py`)
 - Python wrapper around the extension (`bindings.py`)
-- CLI shim that finds and execs the packaged native binary (`cli.py`)
 - typing stub for the PyO3 surface (`_native.pyi`)
+
+The `template-cli` binary is intentionally NOT under the package — it
+ships as a raw wheel script (see Goal above). A Python caller that
+wants to invoke the CLI from code should do
+`subprocess.run([shutil.which("template-cli"), ...])`, not import
+anything from this package.
 
 ## Hook / Gate Split
 

@@ -34,12 +34,14 @@ When growing the scaffold, the load-bearing decisions are:
 ## Invariants to preserve
 
 - `template-cli` and `template-py` never diverge on core behavior.
-- The Python CLI shim in `src/template_python_rust_cmd/cli.py` stays
-  thin: it locates the packaged binary and delegates. No business
-  logic.
+- There is no Python CLI shim. `template-cli[.exe]` ships as a raw
+  wheel script at `template_python_rust_cmd-<ver>.data/scripts/`; pip
+  drops it straight into the venv's `Scripts/` / `bin/` on install with
+  no Python wrapper. Adding `[project.scripts]` back would re-introduce
+  the Windows `os.execv` race fixed in #7 — don't.
 - The wheel always contains both deliverables (PyO3 extension AND
-  staged native binary). `ci/build_wheel.py::verify_artifacts()`
-  enforces this — don't bypass it.
+  the raw `template-cli[.exe]` wheel script). `ci/build_wheel.py::
+  verify_artifacts()` enforces this — don't bypass it.
 - The composite `action.yml` only references subcommands that exist
   in `template-cli --help`. `ci/gates/action_surface.py` checks this.
 

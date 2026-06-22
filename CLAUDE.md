@@ -74,17 +74,20 @@ is about to run, write it as a hook.
 
 - Grow `template-core` first; expose through `template-cli` and
   `template-py`. Don't let them diverge on core behavior.
-- The wheel exposes `template_python_rust_cmd._native` (PyO3) AND a
-  packaged `template-cli` binary under
-  `src/template_python_rust_cmd/_bin/`. `ci/build_wheel.py` enforces
-  both are present.
+- The wheel exposes `template_python_rust_cmd._native` (PyO3) AND
+  ships the cargo-built `template-cli[.exe]` as a raw wheel script at
+  `template_python_rust_cmd-<ver>.data/scripts/`. Pip extracts that
+  directly into the venv's `Scripts/` / `bin/` on install — no Python
+  shim sits in front of the binary. `ci/build_wheel.py::verify_artifacts()`
+  enforces both deliverables are present in the wheel.
 - When changing user-visible commands, update [README.md](./README.md),
   [UPDATE.md](./UPDATE.md), [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md),
   and any affected `ci/gates/<name>.py`.
-- The release pipeline stages the compiled `template-cli` binary into
-  `src/template_python_rust_cmd/_bin/` during the build, verifies the
-  resulting wheel contains both native deliverables, and removes the
-  staged binary afterward so the worktree stays clean.
+- The release pipeline builds `template-cli` via cargo into the pinned
+  `CARGO_TARGET_DIR`, then `ci/build_wheel.py` post-processes the
+  maturin wheel to inject the binary at `.data/scripts/` with a fresh
+  RECORD row. There is no `_bin/` staging step under the package source
+  tree anymore; see #7 for the rationale (Windows `os.execv` race).
 
 ## Where to ask questions
 

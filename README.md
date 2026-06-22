@@ -42,9 +42,11 @@ the rules and where they're implemented are also covered in
 ├── src/template_python_rust_cmd/
 │   ├── __init__.py             # package version + public imports
 │   ├── _native.pyi             # typing stub for the PyO3 surface
-│   ├── bindings.py             # Python wrapper around the extension
-│   ├── cli.py                  # Python entry that delegates to the native binary
-│   └── _bin/                   # packaged native executable location (gitignored)
+│   └── bindings.py             # Python wrapper around the extension
+│   # `template-cli[.exe]` is NOT under the package — it's injected into
+│   # the wheel's <name>-<ver>.data/scripts/ directory by ci/build_wheel.py
+│   # and pip drops it straight into the venv's Scripts/ (Win) or bin/
+│   # (POSIX) on install. See src/template_python_rust_cmd/README.md.
 ├── tests/                      # pytest fixtures + gate contract tests
 └── docs/
     ├── ARCHITECTURE.md
@@ -91,9 +93,13 @@ gate produce noise instead of signal. See [zccache#835 rule 7](https://github.co
 The wheel contains:
 
 - the PyO3 extension module at `template_python_rust_cmd._native`, and
-- the packaged native executable used by the `template-python-rust-cmd`
-  console script, staged into `src/template_python_rust_cmd/_bin/`
-  during build and removed afterward (gitignored).
+- the cargo-built `template-cli[.exe]` binary at
+  `template_python_rust_cmd-<ver>.data/scripts/` — pip extracts this
+  straight into the venv's `Scripts/` (Windows) or `bin/` (POSIX)
+  directory on install, with no Python wrapper in front of it. See
+  [#7](https://github.com/zackees/template-python-rust-cmd/pull/7) for
+  why we avoid `[project.scripts]` (Windows `os.execv` is emulated and
+  races the shell prompt ahead of the child's stdout).
 
 `./build_wheel.py` orchestrates the maturin build, verifies the wheel
 contains both deliverables, and cleans up. `./publish.py` is the
