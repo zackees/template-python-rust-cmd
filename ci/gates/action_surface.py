@@ -22,6 +22,7 @@ typo class of regressions.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -43,16 +44,41 @@ BINARY_NAME = "template-cli.exe" if sys.platform == "win32" else "template-cli"
 
 
 def _binary_path() -> Path | None:
-    # Prefer the staged location used by the wheel; fall back to debug
-    # for local dev (`cargo build`).
-    candidates = [
-        ROOT / "src" / "template_python_rust_cmd" / "_bin" / BINARY_NAME,
-        ROOT / "target" / "release" / BINARY_NAME,
-        ROOT / "target" / "debug" / BINARY_NAME,
-    ]
+    """Locate `template-cli` for the runtime --help probe.
+
+    Searches, in order:
+      1. `CARGO_TARGET_DIR/{release,debug}/` if the env var is set —
+         `ci/build_wheel.py` pins this to
+         `~/.template-python-rust-cmd/cargo-target/wheel-build/` so the
+         wheel build's binary doesn't get rebuilt every time.
+      2. The repo's `target/{release,debug}/` for the `./test` /
+         `cargo build` flow.
+      3. PATH (`shutil.which`) for the case where the user has done
+         `pip install` / `uv tool install` of the built wheel and
+         wants the gate to validate against the installed binary.
+
+    The earlier `src/template_python_rust_cmd/_bin/` candidate was
+    removed when #7 dropped the package-side staging in favor of
+    shipping the binary as a raw wheel script. See #9.
+    """
+    candidates: list[Path] = []
+
+    cargo_target = os.environ.get("CARGO_TARGET_DIR")
+    if cargo_target:
+        candidates.append(Path(cargo_target) / "release" / BINARY_NAME)
+        candidates.append(Path(cargo_target) / "debug" / BINARY_NAME)
+
+    candidates.append(ROOT / "target" / "release" / BINARY_NAME)
+    candidates.append(ROOT / "target" / "debug" / BINARY_NAME)
+
     for path in candidates:
         if path.is_file():
             return path
+
+    on_path = shutil.which("template-cli")
+    if on_path:
+        return Path(on_path)
+
     return None
 
 
@@ -101,10 +127,10 @@ def run() -> int:
         # best-effort against whatever build is available locally.
         print(
             "action_surface: no template-cli binary found "
-            "(src/template_python_rust_cmd/_bin/, target/release/, "
-            "target/debug/). Skipping runtime surface check. Run "
-            "`cargo build -p template-cli` or `./test` to materialize "
-            "the binary and re-run."
+            "($CARGO_TARGET_DIR/{release,debug}/, target/release/, "
+            "target/debug/, PATH). Skipping runtime surface check. "
+            "Run `cargo build -p template-cli` or `./test` to "
+            "materialize the binary and re-run."
         )
         return 0
     if not shutil.which(str(binary)) and not binary.exists():
