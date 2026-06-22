@@ -2,8 +2,30 @@
 # /// script
 # requires-python = ">=3.11"
 # ///
+"""Build the template-python-rust-cmd wheel and sdist.
+
+Flow:
+  1. Build `template-cli` via cargo (release profile).
+  2. Build the maturin wheel + sdist (PyO3 `_native` extension only).
+  3. Inject the cargo-built `template-cli[.exe]` into the wheel's
+     `<name>-<ver>.data/scripts/` directory and update RECORD.
+  4. Verify the wheel contains both deliverables.
+
+Why post-process instead of letting maturin handle the binary?
+  Maturin doesn't ship raw binaries via the wheel scripts mechanism;
+  it ships `data/` content but treats it as install-time data, not as
+  Scripts/bin entries. We could go through `[project.scripts]`, but
+  that generates a pip console-script `.exe` whose `os.execv` is
+  emulated on Windows as `CreateProcess` + parent-exit — the shim
+  returns to cmd.exe before the child binary finishes flushing stdout,
+  so the next shell prompt races ahead of the output. Shipping the
+  binary as a raw wheel script bypasses the Python launcher entirely.
+  See fbuild#747 / zackees/template-python-rust-cmd#2 (items 1 + 10).
+"""
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import shutil
@@ -14,22 +36,15 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGE_BIN_DIR = ROOT / "src" / "template_python_rust_cmd" / "_bin"
+DIST_DIR = ROOT / "dist"
+PACKAGE_NAME = "template_python_rust_cmd"
 CLI_TARGET_NAME = (
     "template-cli.exe" if platform.system() == "Windows" else "template-cli"
 )
-STAGED_BINARY_PATH = PACKAGE_BIN_DIR / CLI_TARGET_NAME
 
 # Pin cargo's target directory to a stable home-dir path so PEP 517
 # isolated builds reuse cargo's incremental fingerprint cache across
-# invocations. Without this, a `pip install .` (or `uv build`) that
-# copies the source tree to a temp dir throws `<temp>/target/` away
-# after each install — every install runs cargo cold (25-30s).
-#
-# Deliberately separate from `<repo>/target/` so iteration on
-# bare `cargo check` / `cargo build` doesn't churn the wheel-build
-# cache and vice versa. See FastLED/fbuild#743 and
-# zackees/template-python-rust-cmd#2 (item 4).
+# invocations. See zackees/template-python-rust-cmd#2 (item 4).
 WHEEL_BUILD_TARGET_DIR = (
     Path.home() / ".template-python-rust-cmd" / "cargo-target" / "wheel-build"
 )
@@ -41,15 +56,11 @@ def run(cmd: list[str]) -> int:
 
 
 def _cargo_target_root() -> Path:
-    """Return cargo's effective target root, respecting CARGO_TARGET_DIR."""
     target_dir = os.environ.get("CARGO_TARGET_DIR")
-    if target_dir:
-        return Path(target_dir)
-    return ROOT / "target"
+    return Path(target_dir) if target_dir else ROOT / "target"
 
 
 def _iter_cargo_inputs() -> list[Path]:
-    """Files that, if newer than the staged binary, invalidate the cache."""
     patterns = (
         "Cargo.toml",
         "Cargo.lock",
@@ -63,37 +74,29 @@ def _iter_cargo_inputs() -> list[Path]:
     return paths
 
 
-def _staged_binary_is_up_to_date() -> bool:
-    """True if the staged binary exists and is newer than every cargo input.
+# `cargo_cache_path` is None until the first `build_cli_binary()` /
+# mtime-skip resolves the cargo-built binary's location. The wheel
+# injection step needs the same path; passing it through the call chain
+# keeps `main()` straightforward.
+def _cargo_cache_path() -> Path:
+    return _cargo_target_root() / "release" / CLI_TARGET_NAME
 
-    Skips the cargo invocation entirely on no-op reinstalls (version
-    bumps, lockfile churn, --reinstall-package). Even cargo's "Fresh"
-    pass walks the workspace and burns wall-clock seconds; an mtime
-    check is milliseconds. See FastLED/fbuild#743 and
-    zackees/template-python-rust-cmd#2 (item 6).
-    """
-    if not STAGED_BINARY_PATH.is_file():
+
+def _staged_cache_is_up_to_date(cache_path: Path) -> bool:
+    """True if the cached cargo output is newer than every cargo input."""
+    if not cache_path.is_file():
         return False
-    staged_mtime = STAGED_BINARY_PATH.stat().st_mtime
+    cache_mtime = cache_path.stat().st_mtime
     for path in _iter_cargo_inputs():
         try:
-            if path.stat().st_mtime > staged_mtime:
+            if path.stat().st_mtime > cache_mtime:
                 return False
         except FileNotFoundError:
-            # Glob race — treat as changed and rebuild.
             return False
     return True
 
 
 def _find_cli_executable_from_json(stdout: str) -> Path | None:
-    """Walk cargo's structured artifact stream for the `template-cli` exec.
-
-    cargo emits one JSON object per line; the artifact we want has
-    `reason == "compiler-artifact"`, `target.name == "template-cli"`,
-    and a non-null `executable` field. We keep the *last* match because
-    cargo emits one artifact per crate target kind and the bin artifact
-    is what we want (matches `cargo install`'s selection rule).
-    """
     found: Path | None = None
     for line in stdout.splitlines():
         line = line.strip()
@@ -115,13 +118,6 @@ def _find_cli_executable_from_json(stdout: str) -> Path | None:
 
 
 def _find_cli_executable_by_search() -> Path | None:
-    """Fallback when cargo emits no compiler-artifact line for the binary.
-
-    Cargo skips the `compiler-artifact` JSON line for fully-cached
-    builds (everything `Fresh`), so the primary discovery path returns
-    None there. Probe `target/release/` and every per-host-triple
-    subdir of `target/`. See zackees/template-python-rust-cmd#2 (item 8).
-    """
     target_root = _cargo_target_root()
     candidates = [target_root / "release" / CLI_TARGET_NAME]
     if target_root.is_dir():
@@ -136,6 +132,19 @@ def _find_cli_executable_by_search() -> Path | None:
 
 
 def build_cli_binary() -> Path:
+    """Build `template-cli` via cargo and return its on-disk path.
+
+    Fast path: if the cached cargo output is newer than every cargo
+    input, return it directly without invoking cargo.
+    """
+    cache_path = _cargo_cache_path()
+    if _staged_cache_is_up_to_date(cache_path):
+        print(
+            f"  cargo cache up-to-date ({cache_path}); skipping cargo build",
+            file=sys.stderr,
+        )
+        return cache_path
+
     cmd = [
         "cargo",
         "build",
@@ -144,7 +153,6 @@ def build_cli_binary() -> Path:
         "template-cli",
         "--message-format=json-render-diagnostics",
     ]
-    # stderr passes through; stdout is captured for the artifact stream.
     proc = subprocess.run(
         cmd,
         cwd=ROOT,
@@ -168,33 +176,6 @@ def build_cli_binary() -> Path:
     return binary
 
 
-def stage_cli_binary(binary: Path) -> Path:
-    PACKAGE_BIN_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(binary, STAGED_BINARY_PATH)
-    return STAGED_BINARY_PATH
-
-
-def _ensure_staged_cli_binary() -> Path:
-    """Stage `template-cli` into the package, skipping cargo if cached.
-
-    Fast path: if the staged binary is newer than every cargo input, the
-    file on disk already reflects the current source — return it without
-    touching cargo. Slow path: build via cargo and copy.
-    """
-    if _staged_binary_is_up_to_date():
-        print(
-            f"  staged binary up-to-date ({STAGED_BINARY_PATH}); skipping cargo",
-            file=sys.stderr,
-        )
-        return STAGED_BINARY_PATH
-    return stage_cli_binary(build_cli_binary())
-
-
-def remove_staged_binary(staged: Path) -> None:
-    if staged.exists():
-        staged.unlink()
-
-
 def build_python_artifacts() -> int:
     cmd = ["uv", "run"]
     if platform.system() == "Linux":
@@ -208,16 +189,98 @@ def build_python_artifacts() -> int:
             "--interpreter",
             sys.executable,
             "--out",
-            str(ROOT / "dist"),
+            str(DIST_DIR),
         ]
     )
     return run(cmd)
 
 
+def _latest_wheel() -> Path:
+    wheels = sorted(DIST_DIR.glob(f"{PACKAGE_NAME}-*.whl"))
+    if not wheels:
+        raise SystemExit("no wheel found in dist/")
+    return wheels[-1]
+
+
+def _wheel_distribution_stem(wheel_path: Path) -> str:
+    """Return `<name>-<ver>` from a wheel filename.
+
+    A wheel filename is `{distribution}-{version}(-{build tag})?-{python
+    tag}-{abi tag}-{platform tag}.whl` (PEP 427). The leading
+    `<name>-<ver>` is what `<...>.data/` and `<...>.dist-info/`
+    directories are prefixed with inside the archive.
+    """
+    parts = wheel_path.stem.split("-")
+    return f"{parts[0]}-{parts[1]}"
+
+
+def _record_row(arcname: str, data: bytes) -> str:
+    """Build a RECORD CSV row matching the wheel spec.
+
+    RECORD is `<arcname>,sha256=<urlsafe-b64 of sha256>,<size>` per
+    https://peps.python.org/pep-0376/#record. RECORD's own row uses
+    empty hash + size fields.
+    """
+    digest = hashlib.sha256(data).digest()
+    h = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return f"{arcname},sha256={h},{len(data)}"
+
+
+def inject_cli_into_wheel(binary: Path) -> Path:
+    """Rewrite the wheel: add the CLI at `<name>-<ver>.data/scripts/`.
+
+    Files in `<name>-<ver>.data/scripts/` are pip's canonical "raw
+    script" install location — pip drops them straight into the venv's
+    `Scripts/` (Windows) or `bin/` (POSIX) directory verbatim. `.exe`
+    files are NOT wrapped (pip only wraps shebang-style text scripts).
+    This is the same mechanism `cargo-dist` and maturin's "bin" mode
+    use to ship native binaries via PyPI without a Python shim.
+    """
+    wheel_path = _latest_wheel()
+    stem = _wheel_distribution_stem(wheel_path)
+    script_arcname = f"{stem}.data/scripts/{CLI_TARGET_NAME}"
+    record_arcname = f"{stem}.dist-info/RECORD"
+
+    binary_bytes = binary.read_bytes()
+
+    # Read every existing entry into memory. Wheels are small enough
+    # that loading the whole thing is fine (maturin emits ~MB-sized
+    # wheels for projects this size).
+    with zipfile.ZipFile(wheel_path, "r") as wf:
+        entries: dict[str, bytes] = {name: wf.read(name) for name in wf.namelist()}
+
+    if record_arcname not in entries:
+        raise SystemExit(
+            f"wheel has no {record_arcname}; cannot inject CLI script"
+        )
+
+    # Append a RECORD row for the new script. RECORD's own row keeps
+    # empty hash + size per spec — we preserve that.
+    record_text = entries[record_arcname].decode("utf-8")
+    new_row = _record_row(script_arcname, binary_bytes) + "\n"
+    record_text = record_text.rstrip("\n") + "\n" + new_row
+    entries[record_arcname] = record_text.encode("utf-8")
+    entries[script_arcname] = binary_bytes
+
+    # Rewrite the wheel from scratch so deflated sizes and central-dir
+    # offsets get rebuilt cleanly (in-place append leaves stale entries
+    # if the same name was already present).
+    with zipfile.ZipFile(wheel_path, "w", zipfile.ZIP_DEFLATED) as wf:
+        for name, data in entries.items():
+            info = zipfile.ZipInfo(name)
+            # Stamp Unix executable bit (0o755) on the script so POSIX
+            # pip installs land it +x. create_system=3 = Unix.
+            if name == script_arcname:
+                info.create_system = 3
+                info.external_attr = (0o755 << 16)
+            wf.writestr(info, data)
+    return wheel_path
+
+
 def verify_artifacts() -> int:
-    dist_dir = ROOT / "dist"
-    wheels = sorted(dist_dir.glob("template_python_rust_cmd-*.whl"))
-    sdists = sorted(dist_dir.glob("template_python_rust_cmd-*.tar.gz"))
+    """Confirm the wheel ships both deliverables: PyO3 + raw CLI script."""
+    wheels = sorted(DIST_DIR.glob(f"{PACKAGE_NAME}-*.whl"))
+    sdists = sorted(DIST_DIR.glob(f"{PACKAGE_NAME}-*.tar.gz"))
     if not wheels:
         print("expected at least one wheel in dist/")
         return 1
@@ -225,12 +288,10 @@ def verify_artifacts() -> int:
         print("expected an sdist in dist/")
         return 1
 
-    expected_binary_suffix = (
-        "template-cli.exe" if platform.system() == "Windows" else "template-cli"
-    )
+    stem = _wheel_distribution_stem(wheels[-1])
     expected_entries = [
-        "template_python_rust_cmd/_native",
-        f"template_python_rust_cmd/_bin/{expected_binary_suffix}",
+        f"{PACKAGE_NAME}/_native",  # PyO3 extension (filename varies by abi)
+        f"{stem}.data/scripts/{CLI_TARGET_NAME}",  # raw CLI script
     ]
     with zipfile.ZipFile(wheels[-1]) as archive:
         names = archive.namelist()
@@ -242,13 +303,11 @@ def verify_artifacts() -> int:
 
 
 def main() -> int:
-    staged = _ensure_staged_cli_binary()
-    try:
-        if build_python_artifacts() != 0:
-            return 1
-        return verify_artifacts()
-    finally:
-        remove_staged_binary(staged)
+    binary = build_cli_binary()
+    if build_python_artifacts() != 0:
+        return 1
+    inject_cli_into_wheel(binary)
+    return verify_artifacts()
 
 
 if __name__ == "__main__":

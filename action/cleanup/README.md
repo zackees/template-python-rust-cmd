@@ -28,7 +28,6 @@ line, no copy-paste of the cleanup logic itself.
 
 1. `uv tool uninstall template-python-rust-cmd` (no-op if not installed).
 2. `uv cache prune --ci` to drop entries the next job won't reuse.
-3. Removes the `_bin/` staging directory if the main action created one.
 
 The shell snippets are short by design — anything more complex would
 move into `ci/gates/cleanup.py` and be invoked via `./ci.sh cleanup`.

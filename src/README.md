@@ -10,10 +10,17 @@ maturin `python-source`.
 src/template_python_rust_cmd/
 ├── __init__.py        # package version + re-exports
 ├── _native.pyi        # typing stub for the PyO3 surface
-├── bindings.py        # Python wrapper around the extension module
-├── cli.py             # Python entrypoint; delegates to the native binary
-└── _bin/              # staged native executable (gitignored except .gitkeep)
+└── bindings.py        # Python wrapper around the extension module
 ```
+
+The `template-cli` native binary is NOT shipped under this package
+directory. It is injected into the wheel's
+`<name>-<ver>.data/scripts/` directory at build time
+(`ci/build_wheel.py`) and pip drops it straight into the venv's
+`Scripts/` (Windows) or `bin/` (POSIX) directory at install time —
+no Python wrapper sits in front of it. See
+`template_python_rust_cmd/README.md` for the rationale (issue #2,
+items 1 + 10).
 
 ## Why `src/`-layout instead of flat
 
@@ -28,9 +35,6 @@ for it.
 - `bindings.py` — the public Python API. Each function should be a
   near-1:1 reflection of an underlying `_native` call, with type
   annotations and a one-line docstring.
-- `cli.py` — the Python CLI shim. Should stay tiny: locate the
-  packaged binary, exec it, pass through the exit code. No business
-  logic.
 - `__init__.py` — package version, public re-exports. Don't import
   `_native` directly here; route through `bindings.py`.
 - `_native.pyi` — optional typing stub mirroring the PyO3 surface.
@@ -40,7 +44,6 @@ for it.
 
 - `_native*.pyd` / `_native*.so` / `_native*.dylib` — built by
   maturin, gitignored.
-- `_bin/<binary>` — staged by `ci/build_wheel.py`, gitignored.
 - Anything implementing domain logic — that belongs in `template-core`.
 
 ## Build modes
