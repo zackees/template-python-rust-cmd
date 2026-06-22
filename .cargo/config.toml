@@ -10,3 +10,19 @@ incremental = true
 [profile.test]
 debug = "line-tables-only"
 incremental = false
+
+# rust-lld ships with the Rust toolchain (no extra install) and links
+# 2-5x faster than MSVC's link.exe on link-heavy rebuilds. The dev
+# profile already lives in the hot iteration loop; cutting the link
+# step is the biggest single win there. Set per Windows target so
+# unix/macos builds keep their platform default linker.
+#
+# Escape hatch if rust-lld trips on a foreign object file:
+#   RUSTFLAGS="-C linker=link.exe" cargo build
+#
+# See fbuild#744 and zackees/template-python-rust-cmd#2.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+
+[target.aarch64-pc-windows-msvc]
+linker = "rust-lld.exe"
