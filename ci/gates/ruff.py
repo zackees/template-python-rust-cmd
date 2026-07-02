@@ -5,7 +5,8 @@ tests, ci). Failing format is fixable with `ruff format`; failing lint
 points at a real issue (unused imports, shadowed names, etc.).
 
 Invoked via `uv run --no-project --with ruff` so we get a hermetic ruff
-without triggering the maturin build the surrounding pyproject.toml
+without triggering the wheel build (soldr PEP 517 backend driving
+maturin) the surrounding pyproject.toml
 otherwise demands. `--with ruff` provisions the dep at script-time even
 when the script itself has no PEP 723 deps declared for it.
 
