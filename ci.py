@@ -41,6 +41,7 @@ GATE_ORDER: list[str] = [
     "ruff",
     "build",
     "test",
+    "backend_smoke",
     "action_yaml",
     "action_surface",
 ]

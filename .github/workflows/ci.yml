@@ -134,6 +134,15 @@ jobs:
         shell: bash
         run: ./ci.sh test
 
+      # Linux-only inside the gate: soldr's compile daemon cannot spawn
+      # on GHA macOS/Windows runners (zackees/soldr#1300); the gate
+      # self-skips there.
+      - name: backend-smoke
+        id: backend_smoke
+        continue-on-error: true
+        shell: bash
+        run: ./ci.sh backend_smoke
+
       - name: action-yaml
         id: action_yaml
         continue-on-error: true
@@ -156,6 +165,7 @@ jobs:
           [ "${{ steps.clippy.outcome }}" = "failure" ] && fail+=("clippy") || true
           [ "${{ steps.ruff.outcome }}" = "failure" ] && fail+=("ruff") || true
           [ "${{ steps.test.outcome }}" = "failure" ] && fail+=("test") || true
+          [ "${{ steps.backend_smoke.outcome }}" = "failure" ] && fail+=("backend_smoke") || true
           [ "${{ steps.action_yaml.outcome }}" = "failure" ] && fail+=("action_yaml") || true
           [ "${{ steps.action_surface.outcome }}" = "failure" ] && fail+=("action_surface") || true
           if [ ${#fail[@]} -gt 0 ]; then
