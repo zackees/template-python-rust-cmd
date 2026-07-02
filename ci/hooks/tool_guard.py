@@ -298,7 +298,8 @@ def _check_segment(seg: str) -> tuple[str, str] | None:
                 "Use `./ci.sh <gate>` for lint/gate invocations, or run "
                 "your build through a named entry point (./test, ./build, "
                 "ci/build_wheel.py). Bare `uv run` walks up to pyproject.toml "
-                "and triggers the maturin wheel build before your script "
+                "and triggers the wheel build (soldr PEP 517 backend driving "
+                "maturin) before your script "
                 "starts. Add `--no-project --script` to skip discovery and "
                 "use the PEP 723 inline-deps path.",
             )
