@@ -10,8 +10,8 @@ Verifies the toolchain shape this repo expects:
   - The pinned Rust toolchain (rust-toolchain.toml) is resolvable.
   - The dev dependency group is materialized.
 
-Does NOT trigger a maturin build — that's reserved for `./test` /
-`./build`. Use `./install` after a fresh clone to confirm the
+Does NOT trigger a wheel build (soldr PEP 517 backend / maturin) —
+that's reserved for `./test` / `./build`. Use `./install` after a fresh clone to confirm the
 environment is sane.
 """
 

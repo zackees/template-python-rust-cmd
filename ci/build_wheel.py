@@ -36,13 +36,13 @@ Why post-process instead of letting maturin handle the binary?
   binary as a raw wheel script bypasses the Python launcher entirely.
   See fbuild#747 / zackees/template-python-rust-cmd#2 (items 1 + 10).
 """
+
 from __future__ import annotations
 
 import base64
 import hashlib
 import json
 import os
-import shutil
 import platform
 import subprocess
 import sys
@@ -289,9 +289,7 @@ def inject_cli_into_wheel(binary: Path) -> Path:
         entries: dict[str, bytes] = {name: wf.read(name) for name in wf.namelist()}
 
     if record_arcname not in entries:
-        raise SystemExit(
-            f"wheel has no {record_arcname}; cannot inject CLI script"
-        )
+        raise SystemExit(f"wheel has no {record_arcname}; cannot inject CLI script")
 
     # Append a RECORD row for the new script. RECORD's own row keeps
     # empty hash + size per spec — we preserve that.
@@ -311,7 +309,7 @@ def inject_cli_into_wheel(binary: Path) -> Path:
             # pip installs land it +x. create_system=3 = Unix.
             if name == script_arcname:
                 info.create_system = 3
-                info.external_attr = (0o755 << 16)
+                info.external_attr = 0o755 << 16
             wf.writestr(info, data)
     return wheel_path
 
