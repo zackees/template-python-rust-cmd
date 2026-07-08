@@ -15,6 +15,7 @@ package source tree, because the wheel-side delivery mechanism (raw
 script) is fundamentally not visible from the source tree anymore —
 there's no `_bin/` directory to look at. See #9.
 """
+
 from __future__ import annotations
 
 import os
