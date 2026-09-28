@@ -37,12 +37,11 @@ jobs:
       event-name: ${{ github.event_name }}
       dispatch-sha: ${{ github.event.inputs.sha || '' }}
 
-  # Job id MUST be "build-<platform-id>" -- ci_lint plan's
-  # `_required_job_ids` convention (zackees/ci.yml@52bd361
-  # ci_lint/plan.py), which is what `ci_lint gate` checks `needs.json`
-  # against. Only "linux-x64" is selected by [flow.pr], so this is the
-  # one required build job on an untagged PR.
-  build-linux-x64:
+  # Job id MUST be exactly "fast" -- ci_lint gate's required-job-id
+  # convention (orchestrator decision on zackees/ci.yml PR #11: precheck,
+  # fast, dylint, and only when plan.needs_platform_lanes: platform-build
+  # + platform-run, added round 3).
+  fast:
     name: fast (linux-x64)
     needs: precheck
     runs-on: ubuntu-24.04
@@ -70,6 +69,9 @@ jobs:
         uses: ./.github/actions/soldr
         with:
           ci-tests: "true"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: fmt
         run: ./ci.sh fmt
@@ -118,11 +120,20 @@ jobs:
     name: dylint (all declared targets)
     needs: precheck
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     permissions:
       contents: read
     env:
       CARGO_INCREMENTAL: "0"
+      # TEMPORARY (see the worker report's upstream issue draft for
+      # zackees/soldr-toolchain): the catalogue this workspace's pinned
+      # Rust 1.95.0 -> nightly-2026-02-28 mapping resolves to has no
+      # published Dylint v6.0.3 driver asset yet, so `soldr dylint
+      # prepare`'s binary-or-exit policy (soldr#2432/#2484) fails closed
+      # even on a cold, unpolluted GHA runner. This opts into the
+      # documented one-time local-source-build fallback so the lane can
+      # run at all; remove once the catalogue publishes that driver.
+      SOLDR_ALLOW_DYLINT_DRIVER_BUILD: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -140,7 +151,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [precheck, build-linux-x64, dylint]
+    needs: [precheck, fast, dylint]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
