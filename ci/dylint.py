@@ -108,14 +108,20 @@ def _prepare_targets(cross: list[DylintTarget]) -> int:
 
 
 def _run_sequential(host: DylintTarget, cross: list[DylintTarget]) -> list[DylintPassResult]:
+    # `--all`, not `--workspace`: cargo-dylint's own CLI (unlike plain
+    # cargo) does not recognize `--workspace` and silently lints nothing
+    # ("Warning: Nothing to do. Did you forget `--all`?") -- discovered
+    # via a deliberately-uncaught RED-test fixture on real CI (see the
+    # worker report's RED/GREEN evidence table for the run IDs of the
+    # false-green this produced before the fix).
     results: list[DylintPassResult] = []
-    host_cmd = ["soldr", "cargo", "dylint", "--workspace"]
+    host_cmd = ["soldr", "cargo", "dylint", "--all"]
     rc, seconds = _run(host_cmd)
     results.append(DylintPassResult("sequential", (host.triple,), tuple(host_cmd), seconds, rc))
     if rc != 0:
         return results
     for target in cross:
-        cmd = ["soldr", "cargo", "dylint", "--workspace", "--", "--target", target.triple]
+        cmd = ["soldr", "cargo", "dylint", "--all", "--", "--target", target.triple]
         rc, seconds = _run(cmd)
         results.append(DylintPassResult("sequential", (target.triple,), tuple(cmd), seconds, rc))
         if rc != 0:
@@ -128,7 +134,7 @@ def _run_multi_target(host: DylintTarget, cross: list[DylintTarget]) -> list[Dyl
     once for every target in a single invocation, rather than once per
     sequential pass (see the clud macOS-vs-Windows half-cost hint in
     ci.yml#6 comment 3)."""
-    cmd = ["soldr", "cargo", "dylint", "--workspace", "--"]
+    cmd = ["soldr", "cargo", "dylint", "--all", "--"]
     for target in cross:
         cmd += ["--target", target.triple]
     rc, seconds = _run(cmd)
