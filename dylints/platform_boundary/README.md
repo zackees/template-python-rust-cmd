@@ -47,12 +47,40 @@ excludes only `lib.rs` while the native-path check additionally exempts
 
 ## RED → GREEN
 
-Add a temporary `#[cfg(windows)]` anywhere in
+Add a temporary host-boundary violation anywhere in
 `crates/private/template-core/src/lib.rs` (outside the boundary) on a
-throwaway commit: the `dylint` job's host pass fails with
-`PLATFORM_BOUNDARY`, naming the file and the exact `#[cfg(windows)]`
-clause. Revert the commit: the job goes green again. See the PR body /
-worker report for the two captured run IDs.
+throwaway commit: the `dylint` job fails with `PLATFORM_BOUNDARY`,
+naming the file and the exact clause. Revert the commit: the job goes
+green again.
+
+Captured on zackees/ci.yml#6 round 2B (PR #17), once the lane's driver
+acquisition was fixed to request a catalogued nightly
+(`nightly-2026-05-28` — see this crate's `rust-toolchain.toml`):
+
+- **RED** — run
+  [36493899806](https://github.com/zackees/template-python-rust-cmd/actions/runs/36493899806),
+  job `109168891535`, 1m27s. Fixture: a direct `platform_imp` reference
+  in `template-core` (a concrete-tree reference, not a `cfg` pattern, so
+  precheck's `LAYOUT-001` regex scan does not fire — only the compiled
+  lint catches it). Exact diagnostic:
+  `error: host-platform selection outside the template-platform
+  boundary: direct concrete-tree reference `platform_imp`; the only
+  allowed selection site is crates/private/template-platform/src/lib.rs,
+  and native platform paths are additionally allowed under
+  crates/private/template-platform/src/platforms/**` — reported on
+  `crates/private/template-core/src/lib.rs:16` (the file's first item;
+  this lint scans the whole file once and reports on that item's span,
+  not necessarily the exact line of the violating token).
+- **GREEN** — run
+  [36494259356](https://github.com/zackees/template-python-rust-cmd/actions/runs/36494259356),
+  job `109170048076`, 3m28s, after reverting the fixture.
+
+An earlier attempt in the same PR (a `#[cfg(windows)]` marker) also
+tripped precheck's `LAYOUT-001` in the same commit, which blocks the
+`dylint` job entirely (precheck gates it) — useful precheck-rule
+RED/GREEN evidence (see `.github/workflows/README.md`) but not a
+dylint-lane-isolated signal, which is why the captured pair above uses
+a concrete-tree reference instead.
 
 ## Tests
 
