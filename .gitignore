@@ -40,9 +40,16 @@ src/template_python_rust_cmd/_native*.dylib
 # Cache used by ci/hooks/check-on-start.py
 .cache/
 
+# zackees/ci.yml checked out by ci-precheck.yml / ci.yml at the `ci.toml`
+# `linter` pin (CI-only; a local `precheck --local` run checks it out too)
+.ci-lint/
+
 # Vendored cargo registry sources + resolver cache state (soldr's local
-# dependency cache; not part of the repo, environment-specific, and large)
-.cargo/registry/
-.cargo/.global-cache
-.cargo/.package-cache
-.cargo/.package-cache-mutate
+# dependency cache; not part of the repo, environment-specific, and large).
+# Unanchored (**/) so this also covers dylints/*/.cargo/ — each Dylint
+# library is its own standalone Cargo workspace (see dylints/README.md)
+# and gets its own local registry cache the same way the root does.
+**/.cargo/registry/
+**/.cargo/.global-cache
+**/.cargo/.package-cache
+**/.cargo/.package-cache-mutate

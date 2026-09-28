@@ -1,0 +1,135 @@
+name: "soldr setup"
+description: >-
+  The ONLY sanctioned `zackees/setup-soldr` call site in this repository
+  (ci.toml `[allow] setup-soldr.only-in`; ci-lint precheck group 4 rejects a
+  direct `zackees/setup-soldr@` step anywhere else). Bakes in the three
+  mandatory inputs ci.toml requires verbatim (`solo-toolchain-cache: false`,
+  `cook-delta: false`, `save-cache: auto`) so no caller can silently reenable
+  a retired cache family (`CACHE-009`), and exposes only the pass-through
+  inputs a lane actually needs.
+
+inputs:
+  dylint:
+    description: >-
+      Forwarded to setup-soldr's `dylint` input. "true" makes setup-soldr
+      resolve the catalogued nightly for this workspace's pinned Rust
+      channel, run `soldr dylint prepare`, and export
+      `SOLDR_DYLINT_SUCCESS_MARKER` / `SOLDR_DYLINT_CONFIGURED_*` so a
+      later `soldr cargo dylint` / `soldr dylint prepare --target` writes a
+      success marker the post step's save gate can match (ci.yml#1, #6 §5d).
+    required: false
+    default: "false"
+  cross-target:
+    description: >-
+      One cross-compile target triple, forwarded to setup-soldr's
+      `cross-targets` (exactly one target per job upstream — a matrix or a
+      repeated call handles more than one).
+    required: false
+    default: ""
+  ci-tests:
+    description: >-
+      Forwarded to setup-soldr's `ci-tests` input. "true" declares this job's
+      output as the prescribed CI-test domain (soldr#2931): linked test
+      products, nextest archives, doctests and their debug sidecars are
+      never persisted by any cache layer, and a `build-cache-mode: full`
+      request is degraded to "thin" rather than silently snapshotting them.
+    required: false
+    default: "false"
+  prebuild-deps-flags:
+    description: >-
+      Forwarded to setup-soldr's `prebuild-deps-flags`. MUST match what the
+      job actually compiles (empty for dev/check/clippy/test/dylint jobs,
+      `--release` for a release-profile wheel build) or the cooked deps
+      cache is never reused. Default "" (dev profile: fmt/clippy/build/test
+      and the Dylint lane compile in dev, not release).
+    required: false
+    default: ""
+  verify-compile-cache:
+    description: >-
+      Forwarded to setup-soldr's `verify-compile-cache`. Set "error" on a
+      job whose whole point is proving compiles went through zccache (D8);
+      leave "off" elsewhere so a legitimate cache-free job (release
+      rehearsal dry runs) never fails on it.
+    required: false
+    default: "off"
+  compile-cache-stats:
+    description: Forwarded to setup-soldr's `compile-cache-stats`.
+    required: false
+    default: "summarize"
+  cache-key-suffix:
+    description: >-
+      Forwarded to setup-soldr's `cache-key-suffix`. Use this to give two
+      jobs on the same target their own cache identity (for example the
+      Dylint lane's dev-profile compile vs the fast lane's dev-profile
+      compile) when they must not share one key.
+    required: false
+    default: ""
+
+outputs:
+  cache-policy-json:
+    description: setup-soldr's resolved cache-layer policy, passed through for `ci_lint cache` evidence.
+    value: ${{ steps.setup.outputs.cache-policy-json }}
+  dylint-toolchain:
+    description: >-
+      The dated nightly setup-soldr resolved for Dylint mode (empty unless
+      `dylint` is `true`).
+    value: ${{ steps.setup.outputs.dylint-toolchain }}
+  dylint-cache-identity:
+    description: >-
+      `<nightly>|<rustc-release>|<rustc-commit>` — the exact string a
+      successful Dylint run must write to `$SOLDR_DYLINT_SUCCESS_MARKER`
+      for the post step to save `dylint-output-cache` (ci.yml#1's short-
+      vs-host-qualified identity bridge; D4).
+    value: ${{ steps.setup.outputs.dylint-cache-identity }}
+  dylint-output-cache-hit:
+    description: Whether the isolated Dylint project-output cache restored an exact key (D3/D4 evidence).
+    value: ${{ steps.setup.outputs.dylint-output-cache-hit }}
+  compile-cache-hits:
+    description: zccache session hit count (D8 evidence).
+    value: ${{ steps.setup.outputs.compile-cache-hits }}
+  compile-cache-misses:
+    description: zccache session miss count (D8 evidence).
+    value: ${{ steps.setup.outputs.compile-cache-misses }}
+  compile-cache-verification:
+    description: ok / invalid-measurement / skipped — set only when `verify-compile-cache` is not "off" (D8 evidence).
+    value: ${{ steps.setup.outputs.compile-cache-verification }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: setup-soldr
+      id: setup
+      uses: zackees/setup-soldr@4df8db93438594f50505574d9dc8117505d33362 # v0.9.80
+      with:
+        version: "0.9.25" # matches pyproject.toml's `requires = ["soldr==0.9.25"]` (the PEP 517 backend pin)
+        toolchain-file: "rust-toolchain.toml"
+        # ── Mandatory inputs (ci.toml [allow].setup-soldr.require) — fixed,
+        # never a pass-through, so a caller cannot silently reenable a
+        # retired family (CACHE-009) or a per-PR base save (#527/#5 RUST-010).
+        solo-toolchain-cache: "false"
+        cook-delta: "false"
+        save-cache: "auto"
+        # ── Runtime bare-cargo guard (ci.yml#6 §4 "Evaluate soldr's
+        # bare-cargo trap-shim idea"). We did NOT copy soldr's own
+        # `.github/scripts/install_ci_cargo_guard.py`: it fails CLOSED
+        # (exit 86) and relies on `SOLDR_REAL_CARGO`, an escape hatch
+        # documented only for soldr's own internal CI to reach the real
+        # rustup Cargo without going back through the PATH-level trap.
+        # Nothing external documents that soldr's own `soldr cargo …`
+        # implementation always uses that escape hatch on every code path,
+        # so shipping the trap here risked failing soldr's OWN internal
+        # nested-cargo calls closed, not just ours — the opposite of
+        # "coexist". `shims: true` is the supported, external-facing
+        # analogue: every `cargo`/`rustfmt`/`clippy-driver`/`rustc`/
+        # `rustdoc` on PATH routes through the installed soldr binary
+        # instead of failing closed. Weaker (reroute, not a loud trap) but
+        # documented and safe to coexist with soldr's own calls.
+        shims: "true"
+        # ── Lane pass-throughs ──────────────────────────────────────────
+        dylint: ${{ inputs.dylint }}
+        cross-targets: ${{ inputs.cross-target }}
+        ci-tests: ${{ inputs.ci-tests }}
+        prebuild-deps-flags: ${{ inputs.prebuild-deps-flags }}
+        verify-compile-cache: ${{ inputs.verify-compile-cache }}
+        compile-cache-stats: ${{ inputs.compile-cache-stats }}
+        cache-key-suffix: ${{ inputs.cache-key-suffix }}

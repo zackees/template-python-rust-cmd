@@ -1,0 +1,14 @@
+[toolchain]
+# Must equal soldr-toolchain's catalogued nightly for the workspace's pinned
+# Rust channel (rust-toolchain.toml at the repo root: 1.95.0). setup-soldr's
+# `dylint: true` mode resolves this same nightly from
+# https://github.com/zackees/soldr-toolchain (assets branch,
+# rust-nightly-versions.v1.json, "1.95" bucket -> "selected") when it maps
+# the Dylint driver identity for the checked workspace (ci.yml#1). A Dylint
+# library only loads into a driver whose nightly matches exactly, so this
+# pin MUST be bumped in lockstep with the root rust-toolchain.toml's channel
+# whenever that channel moves to a new Rust minor version. Verified against
+# the catalogue on 2026-09-28.
+channel = "nightly-2026-02-28"
+components = ["rustc-dev", "llvm-tools-preview", "rust-src"]
+profile = "minimal"

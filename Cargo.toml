@@ -46,3 +46,12 @@ targets = [
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
 ]
+
+# The repo's one Dylint library (dylints/platform_boundary/ — see its
+# README and zackees/ci.yml#6 round 2 §5a). It declares its own
+# `[workspace]` table (a standalone crate/workspace with its own nightly
+# rust-toolchain.toml), so it is already outside `members` above; this is
+# only how `soldr cargo dylint` / `soldr lint rust --cross-dylint` /
+# `soldr ci-test` discover it.
+[workspace.metadata.dylint]
+libraries = [{ path = "dylints/platform_boundary" }]

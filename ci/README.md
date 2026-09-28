@@ -19,12 +19,41 @@ ci/
 │   ├── backend_smoke.py   # uv build --wheel through the soldr backend
 │   ├── action_yaml.py     # composite-action structural check
 │   └── action_surface.py  # subcommand-vs-binary surface check
+├── fast.py                # .github/workflows/ci.yml `fast` job's logic
+├── dylint.py               # .github/workflows/ci.yml `dylint` job's logic
+├── ci_ok.py                # .github/workflows/ci.yml `ci-ok` job's logic
 └── hooks/                 # agent-intent guards (run by Claude Code)
     ├── tool_guard.py
     ├── readme_guard.py
     ├── loc_guard.py
     └── check-on-start.py
 ```
+
+## CI-workflow orchestration (`fast.py` / `dylint.py` / `ci_ok.py`)
+
+Added in zackees/ci.yml#6 round 2 alongside `.github/workflows/ci.yml` +
+`ci-precheck.yml`. These are NOT gates (they don't run under `./ci.sh`) —
+they are the Python side of the workflow's `run:` steps, one line per
+step (CLAUDE.md rule 6):
+
+- **`fast.py`** — subcommands `build-json`, `rust-test`, `python-test`,
+  `wheel-build`, `wheel-install`. Its docstring records the round's
+  decisions with evidence: Clippy stays a separate required check (not
+  folded into Dylint or `soldr ci-test`'s bundled DAG), and the wheel
+  build uses `uv build --wheel` over `soldr wheel --release` because only
+  `uv build` goes through the real PEP 517 frontend (`PKG-004`) — `soldr
+  wheel` is faster locally but bypasses `pyproject.toml`'s `build-backend`
+  entirely.
+- **`dylint.py`** — reads target triples straight from `ci.toml`'s
+  `[platforms]` (not `plan.json`'s `dylint_targets`, which round 1's
+  planner narrows to the flow's *build* platform selection — wrong for
+  Dylint, which always covers every declared platform; see the module
+  docstring). Supports both `--shape sequential` and `--shape
+  multi-target` for the D6 invocation-shape measurement.
+- **`ci_ok.py`** — the `ci-ok` job's one line. Receives the precheck
+  job's `plan` output and `toJSON(needs)` through `env:` (never
+  interpolated into a `run:` line), writes them to files, and calls
+  `ci_lint gate`.
 
 ## Two halves: gates vs. hooks
 

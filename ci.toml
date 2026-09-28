@@ -2,7 +2,7 @@
 # Nothing here generates YAML: it bounds what the YAML may do and decides what each run selects.
 schema  = 3
 profile = "rust-pypi-app"
-linter  = "zackees/ci.yml@<40-hex-sha>"      # the exact ci-lint commit precheck runs
+linter  = "zackees/ci.yml@ff2c7d351d1251752488e63c484ee27198e6e006"      # the exact ci-lint commit precheck runs
 
 # ── Platforms ────────────────────────────────────────────────────────────────
 # Every platform compiles on linux (Soldr cross) and executes on its own runner.
@@ -64,8 +64,9 @@ dylint    = "all-platforms"
 budget    = { critical-path = "8m" }
 
 [flow.main]
-extends = "pr"
-cache   = "write"
+extends    = "pr"
+cache      = "write"
+pre-prune  = true
 
 [flow.release]
 platforms = "all"
@@ -74,11 +75,12 @@ wheels    = "all"
 publish   = "pypi"
 
 [flow.nightly]
-extends  = "release"
-schedule = "daily"
-cache    = "write"
-janitor  = true
-publish  = "none"
+extends    = "release"
+schedule   = "daily"
+cache      = "write"
+pre-prune  = true
+janitor    = true
+publish    = "none"
 
 # ── Tags that are not derived ────────────────────────────────────────────────
 [tags]
@@ -101,7 +103,7 @@ registry   = { via = "setup-soldr:cargo-registry",  max = "100MB", lockfile = tr
 deps       = { via = "setup-soldr:cook",            max = "150MB", lockfile = true, per = "platform" }
 compile    = { via = "setup-soldr:build-cache",     max = "150MB", lockfile = true, per = "platform", min = "1MB" }
 sdk        = { via = "setup-soldr:cross-targets",   max = "500MB", per = "cross-platform" }
-dylint-out = { via = "setup-soldr:dylint-output",   max = "500MB", lockfile = true, per = "platform", min = "1MB" }
+dylint-out = { via = "setup-soldr:dylint-output",   max = "150MB", lockfile = true, per = "target", min = "1MB" }
 uv         = { via = "ci-lint", key = ["os", "python", "uv.lock"], max = "100MB", per = "os" }
 
 # ── Local runs: bosn → act (§11) ─────────────────────────────────────────────

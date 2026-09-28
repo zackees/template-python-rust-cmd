@@ -1,65 +1,71 @@
 # `.github/workflows/`
 
-**Empty on this branch.** [zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6)
-round 1 deleted the previous `ci.yml` here — it ran an 8-entry native
-matrix with bare `cargo`/`maturin`, no `setup-soldr`, no
-`timeout-minutes`, `continue-on-error: true` on 8 of 9 gate steps, and
-queued a retired `macos-13` runner for 24h on every run (0 of 27
-historical runs ever succeeded; see the round's PR body for the
-evidence). This directory intentionally has no workflow file right
-now rather than one patched to limp along on the old crate layout.
+Exactly two files, per [zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6)
+§2 ("Two workflows: precheck gates everything") — `ci-lint` precheck
+(`GEN-001`/`GEN-008`) rejects a third. Added in round 2, replacing the
+`ci.yml` round 1 deleted here: an 8-entry native matrix with bare
+`cargo`/`maturin`, no `setup-soldr`, no `timeout-minutes`,
+`continue-on-error: true` on 8 of 9 gate steps, and a retired `macos-13`
+runner that queued 24h on every run (0 of 27 historical runs ever
+succeeded — see round 1's PR body for the evidence).
 
-## What comes back, and when
-
-A later `zackees/ci.yml#6` round adds exactly two files here, per the
-issue's design (§2 "Two workflows: precheck gates everything"):
+## The two files
 
 - **`ci.yml`** — the only workflow with `pull_request`
   (`opened`/`synchronize`/`reopened`/`edited`), `push: main`,
-  `schedule`, and `workflow_dispatch` triggers. Its first job calls
-  `ci-precheck.yml` via `workflow_call`; every other job `needs:` it.
-- **`ci-precheck.yml`** — `workflow_call` only. Runs on the system
-  `python3` (no tool installs), parses and validates `ci.toml` and the
-  repo against it, and emits `plan.json` — the exact lanes, platforms,
-  suites, and cache mode for that run. `ci.yml`'s jobs read the plan
-  through `fromJSON`; none of them contain their own selection logic.
+  `schedule`, and `workflow_dispatch` triggers. Top-level
+  `permissions: contents: read` and a `concurrency` group per PR number
+  or ref (cancel-in-progress only for `pull_request`). Its `precheck`
+  job calls `ci-precheck.yml` via `workflow_call`; `fast` and `dylint`
+  both `needs: precheck` and run in parallel; `ci-ok` (`if: always()`)
+  needs all three and is the one required check.
+- **`ci-precheck.yml`** — `workflow_call` only, `ubuntu-24.04`,
+  `timeout-minutes: 5`, no tool installs (system `python3` + preinstalled
+  `yq`). Checks out this repo and `zackees/ci.yml` at the SHA `ci.toml`'s
+  `linter` field pins (`.ci-lint/`), then runs ONE step:
+  `python3 -m ci_lint precheck --repo . --plan-out plan.json
+  --github-output`. Emits `plan.json`'s contents plus convenience outputs
+  (`platforms_json`, `cross_platforms_json`, `suites_json`, `mergeable`)
+  that `ci.yml`'s jobs read through `fromJSON` — none of them contain
+  their own selection logic.
 
 No other workflow file is added. `ci.toml` (repo root) is the contract
-those two files will implement — platforms, suites, flows, tags, and
-cache families are all declared there, not hand-written into YAML.
+these two files implement — platforms, suites, flows, tags, and cache
+families are declared there, not hand-written into YAML.
 
-## Local equivalent, right now
+## Local equivalent
 
 ```
 ./ci.sh all
+PYTHONPATH=<ci.yml checkout> uv run --no-project --with pyyaml python3 -m ci_lint precheck --repo . --local
 ```
 
-runs the same gate set (`ci.py::GATE_ORDER`) a future `ci.yml` step
-would call — same bytes, same order, `build` fatal the same way. See
-`docs/ARCHITECTURE.md` and `CLAUDE.md` for the fuller picture, and
-`ci.toml`'s `[local]` table for the planned `bosn → act` local-runner
-story (also not wired up yet).
+The first runs the same gate set `fast`'s steps call (`ci.py::GATE_ORDER`
+still exists and is still the developer entry point — `fast.py`'s steps
+are the CI-specific shapes: JSON-message capture, wheel build+install).
+The second is the same precheck `ci-precheck.yml` runs, and is this
+repo's agent Stop-hook / pre-push gate (zackees/ci.yml#6 §11). See
+`ci.toml`'s `[local]` table for the `bosn → act` local-runner story.
 
-## Step shape (once workflows return)
+## Step shape
 
-Every gate step will have the same one-line shape — no multi-line
-shell, no `shell: pwsh|cmd|powershell`:
-
-```yaml
-- name: <gate>
-  id: <gate>
-  run: ./ci.sh <gate>
-```
-
-Actions pinned by full commit SHA with a version comment, every job
-carrying `timeout-minutes`, runner labels explicit (`ubuntu-24.04`,
-never `-latest`) — see `ci.toml`'s precheck group 2 in
-[zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6) for the
-full list of what the future precheck will enforce.
+Every `run:` step is one line — no multi-line shell, no
+`shell: pwsh|cmd|powershell`. Any content that could contain untrusted
+text (a PR title, `toJSON(needs)`) is passed through `env:`, never
+interpolated directly into the `run:` string (script-injection rule —
+see `ci-precheck.yml`'s precheck step and `ci.yml`'s `ci-ok` job).
+Actions are pinned by full commit SHA with a version comment; every job
+that can declare one has `timeout-minutes`; runner labels are explicit
+(`ubuntu-24.04`, never `-latest`). `CARGO_INCREMENTAL: "0"` on every
+compile-bearing job — `incremental/` is on `ci.toml`'s `[cache] never`
+list and must never be cached, even though `.cargo/config.toml` enables
+it for local dev.
 
 ## Adding a workflow
 
-Don't, on this branch, without the orchestrating round's explicit
-go-ahead — see `CLAUDE.md` in this repo and
-[zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6): only
-`ci.yml` and `ci-precheck.yml` are ever allowed here.
+Don't. Only `ci.yml` and `ci-precheck.yml` are ever allowed in this
+directory — see `CLAUDE.md` and
+[zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6). A new
+lane goes into `ci.toml` (`[suites]`/`[flow.*]`/`[tags]`) and, if it
+needs new orchestration logic, a new `ci/*.py` script the existing jobs
+call — not a new `.github/workflows/*.yml` file.

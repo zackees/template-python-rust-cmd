@@ -2,62 +2,74 @@
 
 GitHub-specific metadata. Kept deliberately thin per
 [zackees/zccache#835 rule 6](https://github.com/zackees/zccache/issues/835):
-any future CI step is a single line — `run: ./ci.sh <gate>` or `run:
+every CI step is a single line — `run: ./ci.sh <gate>` or `run:
 python3 ci/<script>.py ...` — never multi-line shell. The actual logic
-lives in `ci/gates/*.py` so the same bytes run on a developer laptop.
+lives in `ci/gates/*.py` and `ci/{fast,dylint,ci_ok}.py` so the same
+bytes run on a developer laptop.
 
 ## Layout
 
 ```
 .github/
-└── workflows/
-    └── README.md      # see that file — there is no ci.yml here right now
+├── actions/
+│   └── soldr/           # the ONLY `zackees/setup-soldr` call site
+├── workflows/
+│   ├── ci.yml            # the only entrypoint
+│   ├── ci-precheck.yml   # workflow_call, gates ci.yml
+│   └── README.md
+└── README.md             # this file
 ```
 
-## No workflow on this branch
+## The workflows
 
 [zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6) round 1
-deleted the previous `.github/workflows/ci.yml`: it ran an 8-entry
-native matrix with bare `cargo`/`maturin` calls, no `setup-soldr`, and
-queued a retired `macos-13` runner for 24h on every single run (0 of
-27 historical runs ever succeeded). Rather than patch a workflow shape
-this round's crate/packaging restructure had already made stale, it
-was removed outright. A later round adds it back, generated to match
-`ci.toml`'s `[platforms]`/`[suites]`/`[flow.*]` declarations and gated
-by a `ci-precheck.yml` (`workflow_call` only). Until then:
+deleted the previous `.github/workflows/ci.yml` here (an 8-entry native
+matrix with bare `cargo`/`maturin` calls, no `setup-soldr`, and a retired
+`macos-13` runner that queued 24h on every run — 0 of 27 historical runs
+ever succeeded). Round 2 added it back, this time generated to match
+`ci.toml`'s `[platforms]`/`[suites]`/`[flow.*]` declarations and gated by
+`ci-precheck.yml` (`workflow_call` only, ≤ 30 s, no tool installs). See
+`.github/workflows/README.md` for the job graph and step-shape rules.
 
-- `./ci.sh all` locally is the equivalent of what that workflow will
-  run.
-- Every push to a PR against this repo currently has **no required
-  check** — this is expected and temporary, not a regression to chase
-  down.
+- `ci.toml` at the repo root is the exact platform/suite/tag/cache
+  contract those two workflow files implement — nothing is hand-written
+  into YAML that `ci.toml` already declares.
+- `./ci.sh all` locally runs the same gate set the `fast` job's fmt/
+  clippy steps call.
+- `python3 -m ci_lint precheck --repo . --local` is the same check
+  `ci-precheck.yml` runs, and this repo's agent Stop-hook / pre-push gate.
 
-## Workflow shape (planned)
+## The composite action
 
-When it returns, `ci.yml` will be the **only** workflow with
-`pull_request`/`push: main`/`schedule`/`workflow_dispatch` triggers.
-Its first job calls `ci-precheck.yml` (stdlib `python3`, no tool
-installs, fail-fast) through `workflow_call`; every other job
-`needs:` it. Every `run:` step is one line — a gate name via
-`./ci.sh <gate>` or a direct `python3 ci/<script>.py ...` call. See
-`ci.toml` at the repo root for the exact platform/suite/tag contract
-that workflow will implement, and
-[zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6) §2 for
-the precheck's check groups.
+`.github/actions/soldr/` wraps `zackees/setup-soldr` with `ci.toml`'s
+three mandatory inputs baked in
+(`solo-toolchain-cache: false`, `cook-delta: false`, `save-cache: auto`)
+so no lane can silently reenable a retired cache family
+(zccache#1760, `CACHE-009`). It is the ONLY place `zackees/setup-soldr@…`
+may appear in this repository — `ci-lint` precheck rejects a second call
+site. See its own README before adding a lane that needs a new
+setup-soldr input.
 
 ## Why this folder stays intentionally small
 
 The historic anti-pattern is multi-line shell embedded in YAML —
-unlintable, untestable, only validates when CI runs. Pushing logic
-into `ci/gates/<name>.py` makes each gate `import ci.gates.fmt;
-ci.gates.fmt.run()`-testable from `tests/test_gates.py`. The future
-workflow file only has to know which gates/suites exist, not what they
-do.
+unlintable, untestable, only validates when CI runs. Pushing logic into
+`ci/gates/<name>.py` (and, for CI-specific orchestration, `ci/fast.py` /
+`ci/dylint.py` / `ci/ci_ok.py`) makes each step testable from a plain
+Python invocation, not just a live workflow run. The workflow files only
+have to know which gates/suites/lanes exist, never what they do.
 
-## Adding a new gate (for when the workflow returns)
+## Adding a new gate or lane
 
-1. Write the gate at `ci/gates/<name>.py` with `def run() -> int`,
-   using `soldr` for any Rust/wheel command.
-2. Register it in `ci.py::GATE_ORDER`.
-3. Once `.github/workflows/ci.yml` exists again, add a step there. Not
-   before — see "No workflow on this branch" above.
+1. Gate (runs on every `./ci.sh all` too): write `ci/gates/<name>.py`
+   with `def run() -> int`, using `soldr` for any Rust/wheel command, and
+   register it in `ci.py::GATE_ORDER`.
+2. CI-only orchestration (a new `fast`/`dylint` step, not a developer
+   entry point): add a subcommand to the relevant `ci/*.py` module and
+   one new `run:` line in `ci.yml`.
+3. A genuinely new lane (platform, suite, tag): declare it in `ci.toml`
+   first — the workflow reads the plan, it never invents selection logic
+   of its own.
+
+Never add a third file to `.github/workflows/` — see that directory's
+own README.

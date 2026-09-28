@@ -1,0 +1,79 @@
+name: ci-precheck
+
+# zackees/ci.yml#6 §2. Called ONLY by ci.yml's `precheck` job
+# (`uses: ./.github/workflows/ci-precheck.yml`) -- never a standalone
+# entrypoint (`GEN-001`/`GEN-008`: one PR entrypoint). Installs nothing:
+# `ubuntu-24.04` ships system python3 3.12 and yq 4.53.6; ci_lint parses
+# YAML with PyYAML if importable, else `yq -o=json`, per zackees/ci.yml#6
+# open question 1.
+
+on:
+  workflow_call:
+    inputs:
+      pr-title:
+        description: >-
+          The pull_request event's title (or "" for push/schedule/dispatch).
+          Passed as a `with:` input, then only ever read from `env:` in the
+          precheck step below -- never interpolated into a `run:` line
+          (script-injection rule; a title can contain arbitrary text).
+        required: false
+        type: string
+        default: ""
+    outputs:
+      plan:
+        description: Compact plan.json (ci_lint plan's `to_json_dict()`).
+        value: ${{ jobs.precheck.outputs.plan }}
+      platforms_json:
+        description: JSON array of selected platform ids.
+        value: ${{ jobs.precheck.outputs.platforms_json }}
+      cross_platforms_json:
+        description: JSON array of selected non-linux platform ids.
+        value: ${{ jobs.precheck.outputs.cross_platforms_json }}
+      suites_json:
+        description: JSON array of selected suite ids.
+        value: ${{ jobs.precheck.outputs.suites_json }}
+      mergeable:
+        description: '"true"/"false" -- whether the current tag selection allows merging.'
+        value: ${{ jobs.precheck.outputs.mergeable }}
+
+permissions:
+  contents: read
+
+# WF-002 requires this on every workflow file, including a `workflow_call`
+# reusable one. Mirrors ci.yml's own grouping so a re-triggered precheck
+# for the same ref/PR doesn't pile up either, independent of the caller.
+concurrency:
+  group: ci-precheck-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  precheck:
+    name: precheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      plan: ${{ steps.run.outputs.plan }}
+      platforms_json: ${{ steps.run.outputs.platforms_json }}
+      cross_platforms_json: ${{ steps.run.outputs.cross_platforms_json }}
+      suites_json: ${{ steps.run.outputs.suites_json }}
+      mergeable: ${{ steps.run.outputs.mergeable }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: ff2c7d351d1251752488e63c484ee27198e6e006
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Run precheck
+        id: run
+        env:
+          PYTHONPATH: .ci-lint
+          PR_TITLE: ${{ inputs.pr-title }}
+        run: python3 -m ci_lint precheck --repo . --title "$PR_TITLE" --plan-out plan.json --github-output
