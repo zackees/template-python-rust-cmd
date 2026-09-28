@@ -56,6 +56,27 @@ def _venv_python(venv_dir: Path) -> Path:
     return venv_dir / "bin" / "python3"
 
 
+def _uv_python_spec(python_version: str, target: object) -> str:
+    """uv's own Python download, left to auto-detect the host on a
+    `windows-11-arm` GitHub-hosted runner, resolves to a Windows
+    **x86_64** build run under WoA emulation (uv's documented behavior:
+    python-build-standalone has no native Windows/aarch64 CPython, so
+    x64-under-emulation is the intended default there) -- found via run
+    36499249542's platform-run (windows-arm64) leg:
+    `uv pip install`'s own `error: Failed to determine installation
+    plan ... the wheel is compatible with Windows (win_arm64), but
+    you're on Windows (win_amd64)`. There is no way to install a
+    win_arm64-tagged wheel into an x64-emulated interpreter, so for this
+    ONE target this must request uv's Windows ARM64 build explicitly
+    (`<impl>-<version>-<os>-<arch>-<libc>`, see
+    https://docs.astral.sh/uv/concepts/python-versions/); every other
+    target keeps the plain version string uv already resolves
+    correctly."""
+    if isinstance(target, str) and target == "aarch64-pc-windows-msvc":
+        return f"cpython-{python_version}-windows-aarch64-none"
+    return python_version
+
+
 def _make_executable(path: Path) -> None:
     """`actions/upload-artifact`/`download-artifact`'s zip-based transport
     does not reliably preserve the Unix execute bit `ci/platform_build.py`
@@ -190,8 +211,9 @@ def cmd_wheel_install(args: argparse.Namespace) -> int:
         return 1
 
     venv_dir = Path(args.venv)
+    python_spec = _uv_python_spec(args.python, manifest.get("target"))
     rc = subprocess.run(
-        ["uv", "venv", str(venv_dir), "--python", args.python], cwd=ROOT, check=False
+        ["uv", "venv", str(venv_dir), "--python", python_spec], cwd=ROOT, check=False
     ).returncode
     if rc != 0:
         return rc
@@ -232,6 +254,19 @@ def cmd_integration_test(args: argparse.Namespace) -> int:
     ).returncode
     if rc != 0:
         return rc
+    # tests/integration/test_installed_end_to_end.py does shutil.which(
+    # "template-cli") -- it must resolve to the venv's OWN staged copy
+    # (bundled into the wheel, installed here), not anything else on the
+    # outer PATH. Calling the venv's python by its absolute path (as
+    # everywhere else in this module does) does NOT activate the venv --
+    # unlike `uv run`, which the fast lane's equivalent step uses and
+    # which prepends the venv's bin/Scripts dir automatically -- so PATH
+    # must be extended by hand here (found via run 36499249542's
+    # platform-run (linux-arm64)/[ci-full] leg: "template-cli not on
+    # PATH").
+    venv_bin_dir = venv_python.parent
+    env = dict(os.environ)
+    env["PATH"] = os.pathsep.join([str(venv_bin_dir), env.get("PATH", "")])
     cmd = [
         str(venv_python),
         "-m",
@@ -243,7 +278,7 @@ def cmd_integration_test(args: argparse.Namespace) -> int:
         "tests/integration",
     ]
     print(f"+ {' '.join(cmd)}", flush=True)
-    return subprocess.run(cmd, cwd=ROOT, check=False).returncode
+    return subprocess.run(cmd, cwd=ROOT, env=env, check=False).returncode
 
 
 def main(argv: list[str] | None = None) -> int:
