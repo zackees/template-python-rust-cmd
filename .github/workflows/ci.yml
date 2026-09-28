@@ -135,11 +135,8 @@ jobs:
       # run at all; remove once the catalogue publishes that driver.
       SOLDR_ALLOW_DYLINT_DRIVER_BUILD: "1"
     steps:
-      # RED-test marker for zackees/ci.yml#6 round 2B (SEC-004): an
-      # unpinned action tag, not a full commit SHA. Reverted to the pinned
-      # SHA in the very next commit after the failing run is captured.
       - name: Checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup soldr (Dylint mode)
         uses: ./.github/actions/soldr

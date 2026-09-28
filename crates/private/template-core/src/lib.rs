@@ -32,13 +32,6 @@ pub fn run_cli() -> anyhow::Result<()> {
     Ok(())
 }
 
-// RED-test marker for zackees/ci.yml#6 round 2B: proves the
-// PLATFORM_BOUNDARY Dylint lint AND precheck's LAYOUT-001 both catch a
-// host cfg selector outside template-platform. Throwaway; reverted in
-// the very next commit after the failing run is captured.
-#[cfg(windows)]
-fn _red_test_marker_ci_yml_6() {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
