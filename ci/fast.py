@@ -69,8 +69,12 @@ def _run_isolated_soldr(cmd: list[str]) -> int:
     contending for the already-claimed one. RUSTUP_HOME/CARGO_HOME/
     RUSTUP_TOOLCHAIN stay -- those select the toolchain, not a broker
     root."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("SOLDR_", "ZCCACHE_"))}
-    print(f"+ {' '.join(cmd)}  (SOLDR_*/ZCCACHE_* stripped -- see docstring)", flush=True)
+    env = {
+        k: v for k, v in os.environ.items() if not k.startswith(("SOLDR_", "ZCCACHE_"))
+    }
+    print(
+        f"+ {' '.join(cmd)}  (SOLDR_*/ZCCACHE_* stripped -- see docstring)", flush=True
+    )
     return subprocess.run(cmd, cwd=ROOT, env=env, check=False).returncode
 
 
@@ -106,11 +110,28 @@ def cmd_python_test(_args: argparse.Namespace) -> int:
     """Install the project through the real Soldr PEP 517 backend (builds
     `_native` and bundles `template-cli`), then run pytest against that
     installed artifact — not an in-place `cargo build`. See
-    `_run_isolated_soldr`'s docstring for why `uv sync` needs it."""
+    `_run_isolated_soldr`'s docstring for why `uv sync` needs it.
+
+    `-m "not integration"`: the `unit` suite never runs
+    `tests/integration/` (ci.toml `[suites].integration`, opt-in only —
+    see `cmd_integration_test` below and `tests/integration/README.md`).
+    """
     rc = _run_isolated_soldr(["uv", "sync", "--frozen"])
     if rc != 0:
         return rc
-    return _run(["uv", "run", "--no-sync", "pytest"])
+    return _run(["uv", "run", "--no-sync", "pytest", "-m", "not integration"])
+
+
+def cmd_integration_test(_args: argparse.Namespace) -> int:
+    """`ci.toml [suites].integration` on the fast lane: only invoked by a
+    workflow step gated on `contains(fromJSON(needs.precheck.outputs.
+    fast_suites_json), 'integration')` (`[ci-test-integration]`/
+    `[ci-full]`). Reuses the same `uv sync` editable install
+    `cmd_python_test` already performed earlier in the same job — the
+    fast lane never installs twice. See `tests/integration/README.md`."""
+    return _run(
+        ["uv", "run", "--no-sync", "pytest", "-m", "integration", "tests/integration"]
+    )
 
 
 def cmd_wheel_build(args: argparse.Namespace) -> int:
@@ -163,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("python-test")
     p.set_defaults(func=cmd_python_test)
+
+    p = sub.add_parser("integration-test")
+    p.set_defaults(func=cmd_integration_test)
 
     p = sub.add_parser("wheel-build")
     p.add_argument("--out", required=True)

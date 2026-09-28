@@ -52,12 +52,20 @@ in both directions.
 `.github/workflows/ci-precheck.yml` (`workflow_call`, ≤ 30 s, no tool
 installs — precheck's own gate group 2 rules) and
 `.github/workflows/ci.yml` (the only entrypoint: `pull_request`,
-`push: main`, `schedule`, `workflow_dispatch`). Jobs: `precheck` →
-`fast` (linux-x64 build/unit/wheel smoke) + `dylint` (one Linux job, host
-+ every declared cross target) → `ci-ok` (the one required check,
-`if: always()`, calls `ci_lint gate`). `./ci.sh all` still runs locally
-and is what an agent should run before pushing — see "Commands" below for
-the exact local precheck command.
+`push: main`, `schedule`, `workflow_dispatch`). Round 3 added tag-selected
+platform lanes and title-edit reuse. Jobs: `precheck` (now also computes
+`ci_lint plan --reuse`'s platform-lane matrix + reuse map) → `fast`
+(linux-x64 build/unit/wheel smoke; skipped when reused) + `dylint` (one
+Linux job, host + every declared cross target; skipped when reused) +
+`platform-build`/`platform-run` (tag-selected non-default platforms:
+cross-compiled on Linux, executed with no Rust toolchain on each
+platform's own runner) → `ci-ok` (the one required check, `if:
+always()`, calls `ci_lint gate --reuse ... --event ...`). Every job's
+display name carries its `ci_lint`-computed lane digest
+(`fast [<digest>]`, `platform-run (<id>) [<digest>]`), which is also how
+title-edit reuse matches an already-green job. `./ci.sh all` still runs
+locally and is what an agent should run before pushing — see "Commands"
+below for the exact local precheck command.
 
 ## `ci.toml`
 

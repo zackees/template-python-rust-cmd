@@ -5,6 +5,14 @@ name: ci
 # `workflow_call` and every other job `needs:` it, directly or transitively.
 # ci.toml's `linter` pin and this file's ci-precheck.yml checkout ref MUST
 # match (`CT-004`).
+#
+# Round 3 (ci.yml#6 round 3B) adds: tag-selected platform lanes
+# (`platform-build` cross-compiles on Linux; `platform-run` executes on
+# each platform's own native runner, no Rust toolchain there), job
+# display names carrying each lane's digest (`needs.precheck.outputs.
+# lane_digests_json`) for title-edit reuse matching, and `fast`/`dylint`
+# skipping outright when the precheck-computed plan already found a
+# proven-green job for the identical digest on the identical PR head SHA.
 
 on:
   pull_request:
@@ -32,6 +40,16 @@ jobs:
     uses: ./.github/workflows/ci-precheck.yml
     permissions:
       contents: read
+      # Read-only Actions API access, passed down into ci-precheck.yml's
+      # own `permissions:` (a reusable workflow's effective token
+      # permissions are the caller's grant, intersected with the
+      # callee's own request) -- needed for `ci_lint plan --reuse`'s
+      # title-edit reuse lookup (GET .../actions/runs, GET
+      # .../actions/runs/{id}/jobs). See ci.toml [[exceptions]] for the
+      # recorded SEC-002 exception this requires (ci-lint's SEC-002, as
+      # pinned, does not yet distinguish `actions: read` from a wider
+      # grant).
+      actions: read
     with:
       pr-title: ${{ github.event.pull_request.title || '' }}
       event-name: ${{ github.event_name }}
@@ -40,10 +58,14 @@ jobs:
   # Job id MUST be exactly "fast" -- ci_lint gate's required-job-id
   # convention (orchestrator decision on zackees/ci.yml PR #11: precheck,
   # fast, dylint, and only when plan.needs_platform_lanes: platform-build
-  # + platform-run, added round 3).
+  # + platform-run, added round 3). Skipped outright when the plan found
+  # a proven-green "fast" job for the identical digest on this PR's head
+  # SHA (title-edit reuse, round 3A) -- ci_lint gate --reuse verifies
+  # that live before ever accepting this "skipped" as a pass.
   fast:
-    name: fast (linux-x64)
+    name: fast [${{ fromJSON(needs.precheck.outputs.lane_digests_json).fast }}]
     needs: precheck
+    if: needs.precheck.outputs.fast_reused != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -61,7 +83,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: b1528416e7e8d14df78fdddcd25644182330eed2
+          ref: bab8cbac9a78a1b2f0645ed082f54d0e3a23106d
           path: .ci-lint
           persist-credentials: false
 
@@ -95,8 +117,12 @@ jobs:
       - name: Run Rust tests
         run: python3 ci/fast.py rust-test
 
-      - name: Run Python tests
+      - name: Run Python tests (unit suite)
         run: python3 ci/fast.py python-test
+
+      - name: Integration suite (ci.toml [suites].integration, when selected)
+        if: contains(fromJSON(needs.precheck.outputs.fast_suites_json), 'integration')
+        run: python3 ci/fast.py integration-test
 
       - name: Build wheel (Soldr PEP 517 backend via uv build)
         id: wheel-build
@@ -117,8 +143,9 @@ jobs:
         run: python3 -m ci_lint wheel installed --repo . --venv .venv-smoke
 
   dylint:
-    name: dylint (all declared targets)
+    name: dylint [${{ fromJSON(needs.precheck.outputs.lane_digests_json).dylint }}]
     needs: precheck
+    if: needs.precheck.outputs.dylint_reused != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -145,14 +172,27 @@ jobs:
       - name: Dylint -- host + every declared cross target
         run: python3 ci/dylint.py --shape sequential --results-out ${{ runner.temp }}/dylint-results.json
 
-  ci-ok:
-    name: CI OK
-    if: always()
-    needs: [precheck, fast, dylint]
+  # Job id MUST be exactly "platform-build" (ci_lint gate's required-job-id
+  # convention). One Linux job per non-default-platform lane still needing
+  # work (needs.precheck.outputs.platform_lanes_todo_json -- platform_lanes
+  # minus any lane already reused from an earlier run of this same PR head
+  # SHA, round 3A). Cross-compiles that lane's test binaries, native CLI,
+  # and wheel, all on Linux through Soldr; nothing here ever runs on the
+  # target's own OS (zackees/ci.yml#6 §2/§3, D4).
+  platform-build:
+    name: platform-build (${{ matrix.lane.id }}) [${{ fromJSON(needs.precheck.outputs.lane_digests_json)[format('platform:{0}', matrix.lane.id)] }}]
+    needs: precheck
+    if: needs.precheck.outputs.platform_lanes_todo_json != '[]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 35
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.precheck.outputs.platform_lanes_todo_json) }}
+    env:
+      CARGO_INCREMENTAL: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -161,7 +201,136 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: b1528416e7e8d14df78fdddcd25644182330eed2
+          ref: bab8cbac9a78a1b2f0645ed082f54d0e3a23106d
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Setup soldr (cross target ${{ matrix.lane.target }})
+        uses: ./.github/actions/soldr
+        with:
+          ci-tests: "true"
+          cross-target: ${{ matrix.lane.target }}
+          cache-key-suffix: platform-build
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Build + capture compiler-artifact JSON (cross target)
+        run: python3 ci/platform_build.py build-json --target ${{ matrix.lane.target }} --out ${{ runner.temp }}/cargo-messages.jsonl
+
+      - name: ci_lint units (compile-unit discipline, RUST-011/RUST-012, cross target)
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 -m ci_lint units --repo . --artifacts ${{ runner.temp }}/cargo-messages.jsonl
+
+      - name: ci_lint tests size (test-binary budget, RUST-012, cross target)
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 -m ci_lint tests size --repo . --artifacts ${{ runner.temp }}/cargo-messages.jsonl
+
+      - name: Build wheel (Soldr PEP 517 backend, cross target via config setting)
+        id: wheel-build
+        run: python3 ci/platform_build.py wheel-build --target ${{ matrix.lane.target }} --out dist/platform-${{ matrix.lane.id }}
+
+      - name: ci_lint wheel check (PKG-003/004/005, static, cross target -- fail fast before upload)
+        env:
+          PYTHONPATH: .ci-lint
+          WHEEL_PATH: ${{ steps.wheel-build.outputs.wheel-path }}
+        run: python3 -m ci_lint wheel check --repo . --wheel "$WHEEL_PATH"
+
+      - name: Stage test binaries + native CLI + wheel for platform-run
+        run: python3 ci/platform_build.py stage --lane-id ${{ matrix.lane.id }} --target ${{ matrix.lane.target }} --artifacts ${{ runner.temp }}/cargo-messages.jsonl --wheel-dir dist/platform-${{ matrix.lane.id }} --out ${{ runner.temp }}/stage
+
+      - name: Upload staged artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: platform-${{ matrix.lane.id }}
+          path: ${{ runner.temp }}/stage
+          retention-days: 1
+          if-no-files-found: error
+
+  # Job id MUST be exactly "platform-run". Same lane set as platform-build
+  # (platform_lanes_todo_json) so every leg here downloads an artifact its
+  # own matching platform-build leg just produced. `runs-on` is the
+  # lane's OWN runner (native execution, D4) -- no Rust toolchain, no
+  # `soldr`/`cargo` step anywhere in this job.
+  platform-run:
+    name: platform-run (${{ matrix.lane.id }}) [${{ fromJSON(needs.precheck.outputs.lane_digests_json)[format('platform:{0}', matrix.lane.id)] }}]
+    needs: [precheck, platform-build]
+    if: needs.platform-build.result == 'success'
+    runs-on: ${{ matrix.lane.runs_on }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.precheck.outputs.platform_lanes_todo_json) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: bab8cbac9a78a1b2f0645ed082f54d0e3a23106d
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Download staged artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: platform-${{ matrix.lane.id }}
+          path: ${{ runner.temp }}/stage
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Run every declared test binary directly (no Rust toolchain)
+        run: python3 ci/platform_run.py run-tests --artifact-dir ${{ runner.temp }}/stage --results-out ${{ runner.temp }}/platform-run-results.json
+
+      - name: Clean-venv wheel install (floor Python)
+        id: wheel-install
+        run: python3 ci/platform_run.py wheel-install --artifact-dir ${{ runner.temp }}/stage --venv .venv-smoke --python 3.11
+
+      - name: ci_lint wheel check (PKG-003/004/005, static, downloaded artifact)
+        env:
+          PYTHONPATH: .ci-lint
+          WHEEL_PATH: ${{ steps.wheel-install.outputs.wheel-path }}
+        run: python3 -m ci_lint wheel check --repo . --wheel "$WHEEL_PATH"
+
+      - name: ci_lint wheel installed (PKG-001/003/005, native runner)
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 -m ci_lint wheel installed --repo . --venv .venv-smoke
+
+      - name: Integration suite (ci.toml [suites].integration, when selected)
+        if: contains(matrix.lane.suites, 'integration')
+        run: python3 ci/platform_run.py integration-test --venv .venv-smoke
+
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [precheck, fast, dylint, platform-build, platform-run]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Read-only Actions API access for `ci_lint gate --reuse`'s live
+      # re-verification of any job this run accepted as "skipped because
+      # reused" (GET /repos/.../actions/jobs/{id}) -- round 3A "Reuse
+      # verification". See ci.toml [[exceptions]] (SEC-002).
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: bab8cbac9a78a1b2f0645ed082f54d0e3a23106d
           path: .ci-lint
           persist-credentials: false
 
@@ -170,4 +339,9 @@ jobs:
           PYTHONPATH: .ci-lint
           CI_OK_PLAN_JSON: ${{ needs.precheck.outputs.plan }}
           CI_OK_NEEDS_JSON: ${{ toJSON(needs) }}
+          CI_OK_REUSE_JSON: ${{ needs.precheck.outputs.reuse_json }}
+          CI_OK_EVENT_JSON: ${{ toJSON(github.event) }}
+          # See the precheck job's own comment: read-only, required for
+          # ci_lint gate --reuse's live verification.
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 ci/ci_ok.py

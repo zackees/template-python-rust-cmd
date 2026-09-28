@@ -21,6 +21,8 @@ ci/
 │   └── action_surface.py  # subcommand-vs-binary surface check
 ├── fast.py                # .github/workflows/ci.yml `fast` job's logic
 ├── dylint.py               # .github/workflows/ci.yml `dylint` job's logic
+├── platform_build.py       # .github/workflows/ci.yml `platform-build` job's logic
+├── platform_run.py         # .github/workflows/ci.yml `platform-run` job's logic
 ├── ci_ok.py                # .github/workflows/ci.yml `ci-ok` job's logic
 └── hooks/                 # agent-intent guards (run by Claude Code)
     ├── tool_guard.py
@@ -51,9 +53,24 @@ step (CLAUDE.md rule 6):
   docstring). Supports both `--shape sequential` and `--shape
   multi-target` for the D6 invocation-shape measurement.
 - **`ci_ok.py`** — the `ci-ok` job's one line. Receives the precheck
-  job's `plan` output and `toJSON(needs)` through `env:` (never
-  interpolated into a `run:` line), writes them to files, and calls
-  `ci_lint gate`.
+  job's `plan`/`reuse_json` outputs, `toJSON(needs)`, and
+  `toJSON(github.event)` through `env:` (never interpolated into a
+  `run:` line), writes them to files, and calls `ci_lint gate --reuse
+  ... --event ...`.
+- **`platform_build.py`** (round 3) — the `platform-build` matrix job's
+  logic: cross-compiles one lane's declared test binaries + wheel (native
+  CLI bundled in, via the SAME Soldr PEP 517 backend `fast.py` uses, cross
+  target selected with `--config-setting target=<triple>` rather than
+  `soldr wheel --release --target` — see the module docstring for why),
+  then stages them + a `manifest.json` for `platform_run.py` to download.
+  All on `ubuntu-24.04`; nothing here ever runs on the target's own OS.
+- **`platform_run.py`** (round 3) — the matching `platform-run` matrix
+  job's logic, on that lane's own native runner, with NO Rust toolchain:
+  downloads `platform_build.py`'s staged artifact and executes every
+  declared test binary directly (setting `CARGO_BIN_EXE_template-cli` for
+  `template-cli:test:cli`, which reads it at runtime), then a clean-venv
+  wheel install + smoke, then `tests/integration/` when that suite is
+  selected for this lane.
 
 ## Two halves: gates vs. hooks
 
