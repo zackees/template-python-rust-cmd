@@ -39,6 +39,16 @@ def main() -> None:
     print(f"SOLDR_DYLINT_CONFIGURED_RUSTC_COMMIT_HASH  = {rustc_commit!r}")
     print(f"expected identity (setup-soldr side) = {expected_identity!r}")
 
+    print("--- target/dylint tree (round 2D output-path diagnostic) ---")
+    root = Path("target") / "dylint"
+    if not root.exists():
+        print(f"{root} does not exist")
+    else:
+        for p in sorted(root.rglob("*")):
+            depth = len(p.relative_to(root).parts)
+            if depth <= 3:
+                print(f"{'  ' * depth}{p}")
+
 
 if __name__ == "__main__":
     main()
