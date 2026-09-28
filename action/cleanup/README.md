@@ -29,8 +29,13 @@ line, no copy-paste of the cleanup logic itself.
 1. `uv tool uninstall template-python-rust-cmd` (no-op if not installed).
 2. `uv cache prune --ci` to drop entries the next job won't reuse.
 
-The shell snippets are short by design — anything more complex would
-move into `ci/gates/cleanup.py` and be invoked via `./ci.sh cleanup`.
+Both live in `cleanup.py` (this directory), invoked as `python3
+${{ github.action_path }}/cleanup.py uninstall` / `... prune-cache` —
+one line per step, no inline shell. Both subcommands swallow their own
+failures and always return 0, matching the previous
+`... 2>/dev/null || true` behavior without using shell control flow
+(`||`) inside a `run:` line — see
+[zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6) round 1.
 
 ## Surface contract
 

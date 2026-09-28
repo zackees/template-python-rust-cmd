@@ -6,10 +6,13 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Shared Rust library for the CLI and PyO3 layer"
+description = "Portable domain logic for the template scaffold; reaches the OS only via crate::platform::*."
+publish = false
 
 [lib]
 name = "template_core"
+doctest = false
 
 [dependencies]
 anyhow = { workspace = true }
+template-platform = { path = "../template-platform" }

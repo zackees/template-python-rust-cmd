@@ -1,11 +1,38 @@
-#!/usr/bin/env bash
-# Thin wrapper: route to the canonical CI dispatcher.
-#
-# `./lint` is preserved as muscle memory; the actual implementation is
-# `./ci.sh fmt && ./ci.sh clippy && ./ci.sh ruff`. Anything new you'd
-# want under `./lint` belongs as a gate under `ci/gates/`.
-set -euo pipefail
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-"$script_dir/ci.sh" fmt
-"$script_dir/ci.sh" clippy
-"$script_dir/ci.sh" ruff
+#!/usr/bin/env -S uv run --no-project --script
+# /// script
+# requires-python = ">=3.11"
+# ///
+"""Thin wrapper: route to the canonical CI dispatcher.
+
+`./lint` is preserved as muscle memory; the actual implementation is
+`./ci.sh fmt && ./ci.sh clippy && ./ci.sh ruff`. Anything new you'd want
+under `./lint` belongs as a gate under `ci/gates/`.
+
+A Python script (not bash) per zackees/ci.yml#6 round 1: existing
+extensionless entry points are bash only where an owner-approved
+exception says so (`ci.sh` — see `ci.toml`'s `[[exceptions]]` and
+https://github.com/zackees/template-python-rust-cmd/issues/15); every
+other one is a `uv run --no-project --script` PEP 723 script, same as
+this repo's other named entry points.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+
+
+def main() -> int:
+    for gate in ("fmt", "clippy", "ruff"):
+        rc = subprocess.run(
+            [str(ROOT / "ci.sh"), gate], cwd=ROOT, check=False
+        ).returncode
+        if rc != 0:
+            return rc
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

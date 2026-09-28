@@ -8,13 +8,14 @@ The actual Python package. Imported as
 | Module        | Purpose                                                                 |
 |---------------|-------------------------------------------------------------------------|
 | `bindings`    | Python wrapper around the PyO3 extension. Public API surface.           |
+| `platforms`   | Host-platform facade — see `platforms/README.md`. The only place in this package allowed to call `sys.platform`/`os.name`. |
 | `__init__`    | Package version (`__version__`) and re-exports.                         |
 
 ## Internal modules
 
 | Module        | Purpose                                                                 |
 |---------------|-------------------------------------------------------------------------|
-| `_native`     | Built by maturin from `crates/template-py`. Never import directly from outside this package — go through `bindings`. |
+| `_native`     | Built by the soldr PEP 517 backend from `crates/template-py`. Never import directly from outside this package — go through `bindings`. **No pure-Python fallback** — see below. |
 | `_native.pyi` | Optional typing stub for IDEs.                                          |
 
 ## Wrapping the extension
@@ -32,14 +33,23 @@ even if the underlying PyO3 decorator's signature changes (e.g., a
 new keyword argument added at the Rust layer). The wrapper is the
 unit of API compatibility.
 
+`_native` has **no pure-Python fallback** — `bindings.py` imports it
+unconditionally, no `try`/`except ImportError`. If the extension isn't
+built, importing this package fails loudly instead of silently
+degrading to a slower or incomplete pure-Python path
+(`ci.toml`'s packaging check, `PKG-005`).
+
 ## CLI delivery (no Python shim)
 
 The `template-cli` binary on PATH after `pip install` is the
-cargo-built executable itself, **not** a Python launcher. It is
-injected into the wheel's `<name>-<ver>.data/scripts/` directory by
-`ci/build_wheel.py`'s post-processing step. Pip drops files in
-`.data/scripts/` straight into the venv's `Scripts/` (Windows) or
-`bin/` (POSIX) directory verbatim — `.exe` files are NOT wrapped.
+cargo-built executable itself, **not** a Python launcher. The soldr
+PEP 517 backend bundles it straight into the wheel's
+`<name>-<ver>.data/scripts/` directory (`[tool.soldr.pep517]
+bundle-bins` in `pyproject.toml` — see zackees/ci.yml#6 round 1, which
+replaced the former post-build injection script, `ci/build_wheel.py`).
+Pip drops files in `.data/scripts/` straight into the venv's `Scripts/`
+(Windows) or `bin/` (POSIX) directory verbatim — `.exe` files are NOT
+wrapped.
 
 Why no Python shim? On Windows, `[project.scripts]` generates a pip
 console-script `.exe` whose `os.execv` is emulated as `CreateProcess`

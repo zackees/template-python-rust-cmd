@@ -24,9 +24,11 @@ session opened. See [zccache#835 rule 9](https://github.com/zackees/zccache/issu
 ## Hooks in this directory
 
 - `tool_guard.py` — **PreToolUse**. Reads the about-to-run Bash command
-  payload, rejects bare `cargo`/`rustc`/`rustfmt`/`python`/`pip`, and
-  rejects `uv run` without `--no-project --script` outside the named
-  build entry points (`./test`, `./build`, `ci/build_wheel.py`). Returns
+  payload, rejects bare `cargo`/`rustc`/`rustfmt`/`maturin`/`python`/`pip`,
+  and rejects `uv run` without `--no-project --script` outside the
+  named build entry points (`./test`, `./build`, `./install`). `soldr`
+  invocations always pass — it's the required entry point for
+  compile-bearing Rust/wheel work (zackees/ci.yml#6 round 1). Returns
   exit 2 with a structured deny payload so Claude Code surfaces the
   reason to the agent.
 

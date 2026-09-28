@@ -4,20 +4,33 @@ When growing the scaffold, the load-bearing decisions are:
 
 ## Where new logic goes
 
-- **Reusable behavior** → `crates/template-core`. Both the CLI binary
-  and the PyO3 bindings depend on this crate; growth here propagates
-  to both consumers for free.
-- **CLI commands** → `crates/template-cli`. Subcommands here become
-  part of the composite action's surface contract — adding a
-  subcommand means updating `action.yml`'s shell snippets and letting
+- **Reusable behavior** → `crates/private/template-core`, reached
+  through the public `crates/template` amalgam. Both the CLI binary
+  and the PyO3 bindings depend on `template`, never on `template-core`
+  directly; growth in `template-core` propagates to both consumers for
+  free once re-exported.
+- **An optional capability** → a new crate under `crates/private/`,
+  wired into `crates/template`'s `[features]` table as plain `dep:`
+  wiring (see `crates/private/template-json` for the pattern). Never a
+  `#[cfg(feature = ...)]` branch inside `template-core`'s own logic.
+- **CLI commands** → `crates/template-cli`. Subcommands/flags here
+  become part of the composite action's surface contract — adding one
+  means updating `action/smoke_test.py` and letting
   `ci/gates/action_surface.py` verify the binary still exports it.
 - **Public Python API** → `src/template_python_rust_cmd/bindings.py`.
   Keep the wrapper thin: each function should be a near-1:1 reflection
   of the underlying `_native` call, with type annotations and a
   one-line docstring.
+- **A host-specific check** (Python OR Rust) → the platform facade,
+  never inline. Python: `src/template_python_rust_cmd/platforms/`.
+  Rust: `crates/private/template-platform/src/platforms/**`, reached
+  via `crate::platform::*`. See `ci.toml`'s `[allow] platform-selector`
+  / `platform-code` — these are the only two allowed locations.
 - **Native Rust boundary** → `crates/template-py/src/lib.rs`. PyO3
   decorators belong here, not in `template-core`.
-- **CI logic** → `ci/gates/<name>.py`. Never in the workflow YAML.
+- **CI logic** → `ci/gates/<name>.py`. Never in workflow YAML (there
+  is no workflow on this branch yet — see `docs/ARCHITECTURE.md`) and
+  never bare `cargo`/`maturin` — go through `soldr`.
 
 ## Where new infrastructure goes
 
@@ -25,28 +38,36 @@ When growing the scaffold, the load-bearing decisions are:
   registered in `ci.py::GATE_ORDER`.
 - **New hook** → `ci/hooks/<name>.py` reading JSON from stdin,
   wired in `.claude/settings.json`.
-- **New named build entry point** → script at repo root with shebang
-  `#!/usr/bin/env bash` (route to `./ci.sh`) or
-  `#!/usr/bin/env -S uv run --script` for inline Python; add its name
-  to `ci/hooks/tool_guard.py::BUILD_ENTRY_POINTS` so the hook knows
-  it's allowed to use full `uv run`.
+- **New named build entry point** → a Python script at the repo root
+  with shebang `#!/usr/bin/env -S uv run --no-project --script` (PEP
+  723 header); add its name to
+  `ci/hooks/tool_guard.py::BUILD_ENTRY_POINTS` so the hook knows it's
+  allowed to use full `uv run`/`uv sync`. New shell scripts are not
+  allowed — `ci.sh` is the one owner-approved exception (see
+  `ci.toml`'s `[[exceptions]]`).
 
 ## Invariants to preserve
 
-- `template-cli` and `template-py` never diverge on core behavior.
+- `template-cli` and `template-py` never diverge on core behavior —
+  both depend on the same `template` amalgam.
 - There is no Python CLI shim. `template-cli[.exe]` ships as a raw
-  wheel script at `template_python_rust_cmd-<ver>.data/scripts/`; pip
-  drops it straight into the venv's `Scripts/` / `bin/` on install with
-  no Python wrapper. Adding `[project.scripts]` back would re-introduce
-  the Windows `os.execv` race fixed in #7 — don't.
-- The wheel always contains both deliverables (PyO3 extension AND
-  the raw `template-cli[.exe]` wheel script). `ci/build_wheel.py::
-  verify_artifacts()` enforces this — don't bypass it.
+  wheel script at `template_python_rust_cmd-<ver>.data/scripts/`,
+  staged by the soldr backend's `bundle-bins`; pip drops it straight
+  into the venv's `Scripts/` / `bin/` on install with no Python
+  wrapper. Adding `[project.scripts]` back would re-introduce the
+  Windows `os.execv` race fixed in #7 — don't.
+- `_native` has no pure-Python fallback. `bindings.py` imports it
+  unconditionally.
 - The composite `action.yml` only references subcommands that exist
   in `template-cli --help`. `ci/gates/action_surface.py` checks this.
+- Every `run:` step in `action.yml` / `action/cleanup/action.yml` is
+  one line calling a script under `action/` — no inline shell logic.
+- Private crates (`crates/private/*`) never grow a `[features]` table
+  or an optional dependency of their own.
 
 ## When in doubt
 
 Read [CLAUDE.md](./CLAUDE.md) for the essential rules, then
-[UPDATE.md](./UPDATE.md) for the change checklist, then the relevant
-gate's docstring for why the check exists.
+[UPDATE.md](./UPDATE.md) for the change checklist, `ci.toml` for the
+current CI contract, then the relevant gate's docstring for why the
+check exists.

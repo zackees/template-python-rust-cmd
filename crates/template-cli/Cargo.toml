@@ -6,12 +6,17 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Bare Rust binary shipped with the Python package"
+description = "Native CLI binary shipped inside the wheel via soldr's [tool.soldr.pep517] bundle-bins."
 
 [[bin]]
 name = "template-cli"
 path = "src/main.rs"
+# No unit-test harness on the bin target itself: its behavior is proven
+# by tests/cli/main.rs, which runs the actual compiled executable via
+# env!("CARGO_BIN_EXE_template-cli") rather than calling library code
+# in-process.
+test = false
 
 [dependencies]
 anyhow = { workspace = true }
-template_core = { package = "template-core", path = "../template-core" }
+template = { path = "../template", features = ["json"] }

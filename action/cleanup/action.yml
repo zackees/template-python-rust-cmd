@@ -19,11 +19,9 @@ runs:
   steps:
     - name: Uninstall tool
       shell: bash
-      run: |
-        uv tool uninstall template-python-rust-cmd 2>/dev/null || true
+      run: python3 ${{ github.action_path }}/cleanup.py uninstall
 
     - name: Prune uv cache
       if: inputs.keep-cache != 'true'
       shell: bash
-      run: |
-        uv cache prune --ci 2>/dev/null || true
+      run: python3 ${{ github.action_path }}/cleanup.py prune-cache

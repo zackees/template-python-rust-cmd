@@ -1,0 +1,25 @@
+[package]
+name = "template"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Public API amalgam for template-python-rust-cmd: re-exports the private crates under crates/private/ behind Cargo features."
+
+[lib]
+name = "template"
+test = false
+
+[features]
+# The ONLY amalgam feature sets ci.toml's [rust] ship list ever compiles
+# are `[]` (this line absent) and `["json"]`. `json` is dep: wiring only —
+# no `#[cfg(feature = "json")]` branch exists anywhere in this crate or in
+# template-core; the feature only decides whether template-json is linked
+# in at all.
+json = ["dep:template-json"]
+
+[dependencies]
+template-core = { path = "../private/template-core" }
+template-json = { path = "../private/template-json", optional = true }
