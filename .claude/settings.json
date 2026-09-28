@@ -23,6 +23,10 @@
           {
             "type": "command",
             "command": "uv run --no-project --script ci/hooks/loc_guard.py"
+          },
+          {
+            "type": "command",
+            "command": "uv run --no-project --script ci/hooks/local_precheck_guard.py"
           }
         ]
       }
@@ -34,6 +38,17 @@
           {
             "type": "command",
             "command": "uv run --no-project --script ci/hooks/check-on-start.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project --script ci/hooks/local_precheck_guard.py --stop"
           }
         ]
       }

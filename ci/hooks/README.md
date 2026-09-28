@@ -20,6 +20,7 @@ session opened. See [zccache#835 rule 9](https://github.com/zackees/zccache/issu
 | README presence after a new file lands | `ci/hooks/readme_guard.py` |
 | Bare `cargo` / `python` / unsafe `uv run` | `ci/hooks/tool_guard.py` |
 | Git fingerprint at session start       | `ci/hooks/check-on-start.py` |
+| Contract precheck (workflows/ci.toml/manifests) | `ci/hooks/local_precheck_guard.py` |
 
 ## Hooks in this directory
 
@@ -45,6 +46,18 @@ session opened. See [zccache#835 rule 9](https://github.com/zackees/zccache/issu
   `git status --porcelain` into `.cache/session_fingerprint.json` so a
   future Stop hook can decide whether anything changed during the
   session.
+
+- `local_precheck_guard.py` — **PostToolUse on Edit|Write|MultiEdit**,
+  and **Stop** (with `--stop`). Runs `python3 ci/local.py precheck`
+  (zackees/ci.yml#6 §11's local gate) whenever the edited file is under
+  `.github/**`, or is `ci.toml`/`bosn.toml`/`Cargo.toml`/`pyproject.toml`/
+  `action.yml`; the Stop invocation runs it unconditionally, as a
+  backstop for edits `local_precheck_guard.py` couldn't see (e.g. one
+  made through `Bash`). Missing/too-short READMEs are `readme_guard.py`'s
+  job, not this hook's. Closes zackees/zccache#1760's root causes 1 and
+  2 for this repository: the guard now runs locally, and is never
+  blocked by `tool_guard.py` (a plain `python3 <script>` call always
+  passes that hook).
 
 ## Wiring
 
