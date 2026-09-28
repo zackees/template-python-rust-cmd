@@ -190,7 +190,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.precheck.outputs.platform_lanes_todo_json) }}
+        # A custom axis named "lane" whose values are the FULL per-platform
+        # objects (not `include:`, which would flatten each object's keys to
+        # top-level `matrix.*` properties instead) -- this is what makes
+        # `matrix.lane.id`/`.target`/`.runs_on`/`.suites` (used throughout
+        # this job and in its own display name above) valid.
+        lane: ${{ fromJSON(needs.precheck.outputs.platform_lanes_todo_json) }}
     env:
       CARGO_INCREMENTAL: "0"
     steps:
@@ -265,7 +270,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.precheck.outputs.platform_lanes_todo_json) }}
+        # A custom axis named "lane" whose values are the FULL per-platform
+        # objects (not `include:`, which would flatten each object's keys to
+        # top-level `matrix.*` properties instead) -- this is what makes
+        # `matrix.lane.id`/`.target`/`.runs_on`/`.suites` (used throughout
+        # this job and in its own display name above) valid.
+        lane: ${{ fromJSON(needs.precheck.outputs.platform_lanes_todo_json) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
