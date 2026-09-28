@@ -44,7 +44,15 @@ binaries = [
 # ── Lint lanes ───────────────────────────────────────────────────────────────
 [lint.dylint]
 targets = "all-platforms"           # one check-only pass per declared target, all on Linux
-shape   = "measure"                 # round 2 decides: "multi-target" | "sequential" | "per-target-jobs"
+# shape/budget: round 2 could not measure D6 (see the worker report) --
+# the nightly-2026-02-28 Dylint driver has no catalogued asset, and
+# soldr's SOLDR_ALLOW_DYLINT_DRIVER_BUILD=1 source-build fallback fails
+# closed on real CI (nested-cargo toolchain resolution, upstream soldr
+# defect). Every "sequential" vs "multi-target" number gathered so far
+# is dominated by that failure/retry noise, not real lint time. Left at
+# round 1's starting values; a later round remeasures once the driver
+# is obtainable.
+shape   = "measure"                 # "multi-target" | "sequential" | "per-target-jobs"
 budget  = { warm = "235s", cold = "480s" }
 
 # ── Suites ───────────────────────────────────────────────────────────────────
