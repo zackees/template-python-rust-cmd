@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import subprocess
 import sys
 import time
@@ -53,6 +54,20 @@ def _venv_python(venv_dir: Path) -> Path:
     if is_windows():
         return venv_dir / "Scripts" / "python.exe"
     return venv_dir / "bin" / "python3"
+
+
+def _make_executable(path: Path) -> None:
+    """`actions/upload-artifact`/`download-artifact`'s zip-based transport
+    does not reliably preserve the Unix execute bit `ci/platform_build.py`
+    set before uploading -- found via run 36498870719's platform-run
+    (macos-x64/macos-arm64) legs: `PermissionError: [Errno 13] Permission
+    denied` on the downloaded, un-executable `template-cli__test__cli`.
+    Re-applied here, after download, on every staged binary before it is
+    ever spawned. A harmless no-op on Windows (NTFS has no Unix execute
+    bit; `.exe` is inherently runnable -- os.chmod there only touches the
+    read-only flag)."""
+    mode = path.stat().st_mode
+    path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
 def _load_manifest(artifact_dir: Path) -> dict[str, object]:
@@ -105,6 +120,7 @@ def cmd_run_tests(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+        _make_executable(cli_path)
         env[CARGO_BIN_EXE_ENV] = str(cli_path)
         print(f"{CARGO_BIN_EXE_ENV}={cli_path}")
 
@@ -118,6 +134,7 @@ def cmd_run_tests(args: argparse.Namespace) -> int:
         if not isinstance(name, str) or not isinstance(rel, str):
             continue
         exe = (artifact_dir / rel).resolve()
+        _make_executable(exe)
         print(f"+ {exe}  # {name}", flush=True)
         start = time.monotonic()
         proc = subprocess.run([str(exe)], cwd=ROOT, env=env, check=False)
