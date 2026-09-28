@@ -305,6 +305,15 @@ jobs:
         run: python3 ci/platform_run.py wheel-install --artifact-dir ${{ runner.temp }}/stage --venv .venv-smoke --python 3.11
 
       - name: ci_lint wheel check (PKG-003/004/005, static, downloaded artifact)
+        # Explicit `bash` (allowed by GEN-005; only pwsh/cmd/powershell are
+        # banned): the default shell on a windows-* runner is pwsh, where
+        # "$WHEEL_PATH" is an undefined PowerShell variable, not the env
+        # var below -- it silently expands to "", not a missing-var error
+        # (found via run 36498352193's platform-run (windows-x64) leg:
+        # `ci_lint wheel check --wheel ""` -> PKG-003 "'' is not a
+        # well-formed wheel filename"). platform-build's identical pattern
+        # never hit this: that job only ever runs on ubuntu-24.04.
+        shell: bash
         env:
           PYTHONPATH: .ci-lint
           WHEEL_PATH: ${{ steps.wheel-install.outputs.wheel-path }}
