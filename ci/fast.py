@@ -85,8 +85,25 @@ def cmd_rust_test(_args: argparse.Namespace) -> int:
 def cmd_python_test(_args: argparse.Namespace) -> int:
     """Install the project through the real Soldr PEP 517 backend (builds
     `_native` and bundles `template-cli`), then run pytest against that
-    installed artifact — not an in-place `cargo build`."""
-    rc = _run(["uv", "sync", "--frozen"])
+    installed artifact — not an in-place `cargo build`.
+
+    `uv sync`'s isolated PEP 517 build environment installs its OWN copy
+    of the `soldr` PyPI package (pinned by pyproject.toml's
+    `requires = ["soldr==0.9.25"]`), which spawns a SEPARATE soldr binary
+    from the one `.github/actions/soldr` already installed and started a
+    broker for on PATH -- confirmed on real CI (run 36489839023, job
+    109155586748: "the running broker was started from a different Soldr
+    image", followed by "soldr root ownership is busy:
+    .../setup-soldr-soldr (no daemon route claim to name the owner)").
+    Two different soldr binaries cannot share one broker-owned root. This
+    step therefore does NOT inherit the outer job's `SOLDR_*`/`ZCCACHE_*`
+    workspace-state env vars (RUSTUP_HOME/CARGO_HOME/RUSTUP_TOOLCHAIN
+    stay -- those select the toolchain, not a broker root), so the
+    nested PEP 517 build resolves its own independent soldr session
+    instead of contending for the already-claimed one."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("SOLDR_", "ZCCACHE_"))}
+    print("+ uv sync --frozen  (SOLDR_*/ZCCACHE_* stripped -- see docstring)", flush=True)
+    rc = subprocess.run(["uv", "sync", "--frozen"], cwd=ROOT, env=env, check=False).returncode
     if rc != 0:
         return rc
     return _run(["uv", "run", "--no-sync", "pytest"])
