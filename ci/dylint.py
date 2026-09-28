@@ -88,10 +88,25 @@ def _load_platforms(repo: Path) -> list[DylintTarget]:
     return out
 
 
+def _dylint_env() -> dict[str, str]:
+    """Every `soldr dylint ...` invocation (prepare or check) must run
+    with `RUSTUP_TOOLCHAIN` unset, mirroring zackees/clud's working
+    `_dylint.yml` (`env -u RUSTUP_TOOLCHAIN soldr dylint ...`). setup-soldr's
+    `dylint: true` mode exports `RUSTUP_TOOLCHAIN` for the workspace's own
+    stable channel; left set, it overrides the nightly `soldr dylint`
+    itself resolves for the driver, and the nested build/check fails to
+    find a repo-pinned toolchain in its own isolated temp directory. A
+    one-line `run:` step can't chain `env -u ... &&`, so the unset happens
+    here instead."""
+    env = dict(os.environ)
+    env.pop("RUSTUP_TOOLCHAIN", None)
+    return env
+
+
 def _run(cmd: list[str]) -> tuple[int, float]:
     print(f"+ {' '.join(cmd)}", flush=True)
     start = time.monotonic()
-    proc = subprocess.run(cmd, cwd=ROOT, check=False)
+    proc = subprocess.run(cmd, cwd=ROOT, env=_dylint_env(), check=False)
     return proc.returncode, time.monotonic() - start
 
 
@@ -107,21 +122,27 @@ def _prepare_targets(cross: list[DylintTarget]) -> int:
     return 0
 
 
+def _check_cmd(target: DylintTarget | None) -> list[str]:
+    """`soldr dylint` (soldr's own subcommand, not `soldr cargo dylint`,
+    which defers to a stray `cargo-dylint` on PATH instead of soldr's
+    managed/cached one) `--all -- --workspace --all-targets [--target T]`
+    -- soldr's own flag first, cargo-dylint's arguments after `--`. Matches
+    zackees/clud's proven working `_dylint.yml` invocation exactly."""
+    cmd = ["soldr", "dylint", "--all", "--", "--workspace", "--all-targets"]
+    if target is not None:
+        cmd += ["--target", target.triple]
+    return cmd
+
+
 def _run_sequential(host: DylintTarget, cross: list[DylintTarget]) -> list[DylintPassResult]:
-    # `--all`, not `--workspace`: cargo-dylint's own CLI (unlike plain
-    # cargo) does not recognize `--workspace` and silently lints nothing
-    # ("Warning: Nothing to do. Did you forget `--all`?") -- discovered
-    # via a deliberately-uncaught RED-test fixture on real CI (see the
-    # worker report's RED/GREEN evidence table for the run IDs of the
-    # false-green this produced before the fix).
     results: list[DylintPassResult] = []
-    host_cmd = ["soldr", "cargo", "dylint", "--all"]
+    host_cmd = _check_cmd(None)
     rc, seconds = _run(host_cmd)
     results.append(DylintPassResult("sequential", (host.triple,), tuple(host_cmd), seconds, rc))
     if rc != 0:
         return results
     for target in cross:
-        cmd = ["soldr", "cargo", "dylint", "--all", "--", "--target", target.triple]
+        cmd = _check_cmd(target)
         rc, seconds = _run(cmd)
         results.append(DylintPassResult("sequential", (target.triple,), tuple(cmd), seconds, rc))
         if rc != 0:
@@ -133,8 +154,10 @@ def _run_multi_target(host: DylintTarget, cross: list[DylintTarget]) -> list[Dyl
     """D6 candidate: host artifacts (proc-macros, build scripts) compile
     once for every target in a single invocation, rather than once per
     sequential pass (see the clud macOS-vs-Windows half-cost hint in
-    ci.yml#6 comment 3)."""
-    cmd = ["soldr", "cargo", "dylint", "--all", "--"]
+    ci.yml#6 comment 3). Not proven upstream (clud only ever runs
+    sequential, one `--target` per invocation); measured here and picked
+    only if it is both correct and faster."""
+    cmd = ["soldr", "dylint", "--all", "--", "--workspace", "--all-targets"]
     for target in cross:
         cmd += ["--target", target.triple]
     rc, seconds = _run(cmd)

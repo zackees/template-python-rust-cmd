@@ -39,7 +39,9 @@ action's own `inputs:`, so a caller cannot override them even by accident.
 
 | Input | Forwards to | Used by |
 |---|---|---|
-| `dylint` | `dylint` | the `dylint` job: resolves the catalogued nightly, runs `soldr dylint prepare`, exports `SOLDR_DYLINT_SUCCESS_MARKER` / `SOLDR_DYLINT_CONFIGURED_*` |
+| `dylint` | `dylint` | the `dylint` job: resolves the requested nightly, runs `soldr dylint prepare`, exports `SOLDR_DYLINT_SUCCESS_MARKER` / `SOLDR_DYLINT_CONFIGURED_*` |
+| `dylint-toolchain` | `dylint-toolchain` | the `dylint` job: pinned to `nightly-2026-05-28` -- this workspace's auto-mapped nightly (`nightly-2026-02-28`) has no catalogued driver asset |
+| `prebuild-deps` | `prebuild-deps` | the `dylint` job sets `none`: `soldr cook`'s stable-toolchain deps can't warm a nightly Dylint compile |
 | `cross-target` | `cross-targets` | a cross-target Dylint or cross-build pass; exactly one triple per call |
 | `ci-tests` | `ci-tests` | the `fast` job's `soldr ci-test` step: declares the linked-test-product cache exclusion |
 | `prebuild-deps-flags` | `prebuild-deps-flags` | MUST match the job's actual profile — empty for dev/check/dylint, `--release` for the wheel build |

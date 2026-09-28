@@ -12,13 +12,35 @@ inputs:
   dylint:
     description: >-
       Forwarded to setup-soldr's `dylint` input. "true" makes setup-soldr
-      resolve the catalogued nightly for this workspace's pinned Rust
-      channel, run `soldr dylint prepare`, and export
-      `SOLDR_DYLINT_SUCCESS_MARKER` / `SOLDR_DYLINT_CONFIGURED_*` so a
-      later `soldr cargo dylint` / `soldr dylint prepare --target` writes a
-      success marker the post step's save gate can match (ci.yml#1, #6 §5d).
+      resolve the requested nightly (see `dylint-toolchain` below), run
+      `soldr dylint prepare`, and export `SOLDR_DYLINT_SUCCESS_MARKER` /
+      `SOLDR_DYLINT_CONFIGURED_*` so a later `soldr dylint` invocation
+      writes a success marker the post step's save gate can match
+      (ci.yml#1, #6 §5d).
     required: false
     default: "false"
+  dylint-toolchain:
+    description: >-
+      Forwarded to setup-soldr's `dylint-toolchain`. Leave empty to let
+      setup-soldr auto-map this workspace's stable channel to a catalogued
+      nightly; set explicitly when that auto-mapped nightly has no
+      catalogued Dylint driver asset (confirmed for this workspace: the
+      auto-mapped nightly-2026-02-28 has none, but nightly-2026-05-28
+      does -- see `dylints/platform_boundary/rust-toolchain.toml`'s
+      comment and zackees/clud's working `_dylint.yml` for the working
+      pattern this mirrors). MUST equal every Dylint library's own pinned
+      nightly exactly.
+    required: false
+    default: ""
+  prebuild-deps:
+    description: >-
+      Forwarded to setup-soldr's `prebuild-deps`. Set "none" on the Dylint
+      lane: `soldr cook`'s prebuilt deps are cooked under this workspace's
+      STABLE toolchain and cannot warm a nightly Dylint compile, so
+      leaving the default ("soldr-cook") only produces a
+      "0 hit" cook-cache warning for zero benefit.
+    required: false
+    default: "soldr-cook"
   cross-target:
     description: >-
       One cross-compile target triple, forwarded to setup-soldr's
@@ -127,14 +149,16 @@ runs:
         # 109146426618: the exact same failure, same isolated-temp-dir
         # shape, with `shims: true` absent) -- so this is a soldr-internal
         # defect in the driver-source-build fallback itself, independent
-        # of this action's inputs. `shims: true` stays OFF anyway (no
-        # proven benefit, one less variable); see the worker report for
-        # the upstream issue draft (setup-soldr's Dylint driver-build
-        # fallback needs its nested cargo invocation to resolve a working
-        # toolchain from an isolated temp directory that has no pin of
-        # its own -- today it doesn't, with or without shims).
+        # of this action's inputs. `shims: true` stays OFF (no proven
+        # benefit). Root-caused and avoided entirely: `dylint-toolchain`
+        # below requests a nightly the catalogue HAS a prebuilt driver
+        # for, so the from-source fallback (and this whole class of
+        # failure) is never triggered -- see the worker report for the
+        # upstream issue draft filed against the fallback anyway.
         # ── Lane pass-throughs ──────────────────────────────────────────
         dylint: ${{ inputs.dylint }}
+        dylint-toolchain: ${{ inputs.dylint-toolchain }}
+        prebuild-deps: ${{ inputs.prebuild-deps }}
         cross-targets: ${{ inputs.cross-target }}
         ci-tests: ${{ inputs.ci-tests }}
         prebuild-deps-flags: ${{ inputs.prebuild-deps-flags }}
