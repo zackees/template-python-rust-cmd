@@ -2,48 +2,88 @@
 
 Guidance for Claude Code (and any agent) working in this repository.
 
-This is the **canonical hybrid Rust + Python template**. Practices that
-land here propagate to every downstream consumer seeded by
-`gh repo create --template zackees/template-python-rust-cmd`. Bias
-toward keeping things tight and load-bearing; the leverage is high.
+This is the **canonical hybrid Rust + Python template**, and the fleet
+reference repo for the `rust-pypi-app` CI profile
+([zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6)).
+Practices that land here propagate to every downstream consumer seeded
+by `gh repo create --template zackees/template-python-rust-cmd`, AND
+feed back into `ci.toml`'s schema and `ci-lint` in `zackees/ci.yml`.
+Bias toward keeping things tight and load-bearing; the leverage is high
+in both directions.
 
 ## Essential Rules
 
-1. **Always run gates through `./ci.sh <gate>`.** Never paste
-   `uv run python ci/gates/...` or `cargo clippy` directly into a
+1. **Always run gates through `./ci.sh <gate>`.** Never paste `soldr
+   cargo clippy ...` or `uv run python ci/gates/...` directly into a
    command. The `ci/hooks/tool_guard.py` PreToolUse hook blocks bare
    forms and tells you why.
-2. **Reserve full `uv run` (without `--no-project --script`) for named
-   build entry points: `./test`, `./build`, `ci/build_wheel.py`,
-   `./publish`, `./install`.** Everything else needs the protective
-   flags — see `ci.sh` for the rationale.
-3. **Every directory must have a `README.md` of ≥ 50 lines.** Enforced
+2. **Never call bare `cargo`/`rustc`/`rustup`/`maturin`/`pip` for Rust
+   or wheel work — use `soldr`** (`soldr cargo <cmd>`, `soldr wheel`,
+   the soldr PEP 517 backend via `uv build`/`uv sync`). This is a fleet
+   rule (`RUST-001`/`PKG-003` in `zackees/ci.yml`), not just a local
+   convention; `soldr` invocations always pass `tool_guard.py`.
+3. **Reserve full `uv run`/`uv sync` (without `--no-project --script`)
+   for named build entry points: `./test`, `./install`.** Everything
+   else needs the protective flags — see `ci.sh` for the rationale.
+4. **Every directory must have a `README.md` of ≥ 50 lines.** Enforced
    by `ci/hooks/readme_guard.py` on every edit.
-4. **Source files ≤ 1000 lines (warn) / ≤ 1500 (fail).** Enforced both
+5. **Source files ≤ 1000 lines (warn) / ≤ 1500 (fail).** Enforced both
    on every CI run (`ci/gates/loc.py`) and per-edit
    (`ci/hooks/loc_guard.py`). Split convention:
-   `foo.rs` → `foo/mod.rs` + per-domain submodules with `pub use`
-   re-exports in `mod.rs`.
-5. **Logic lives in Python under `ci/`; YAML stays thin.** Every CI
-   step is `run: ./ci.sh <gate>`. No multi-line shell embedded in
-   `.github/workflows/ci.yml`.
-6. **`build` is the only fatal gate.** A failing build halts the rest
+   `foo.rs` → `foo/mod.rs` + per-domain submodules, with `pub use`
+   re-exports in `mod.rs` so the public path is unchanged.
+6. **Logic lives in Python under `ci/`; YAML stays thin.** Every future
+   CI step is a single line — `run: ./ci.sh <gate>` or `run: python3
+   ci/<script>.py ...` — never multi-line shell. (There is no
+   `.github/workflows/ci.yml` on this branch right now — see "CI status
+   on this branch" below.)
+7. **`build` is the only fatal gate.** A failing build halts the rest
    of the run because every downstream gate would produce noise
    against an uncompiled tree.
+8. **Host checks (`sys.platform`/`os.name`/`cfg(target_os)`) live in
+   exactly two places**: `src/template_python_rust_cmd/platforms/` (Python)
+   and `crates/private/template-platform/src/platforms/**` plus its one
+   `cfg_select!` selector (Rust). Nowhere else — see `ci.toml`'s `[allow]
+   platform-selector` / `platform-code`.
+
+## CI status on this branch
+
+`zackees/ci.yml#6` round 1 restructured the crate/package layout (this
+change) and removed the old `.github/workflows/ci.yml` (it queued a
+retired `macos-13` runner for 24h on every run — see the PR body). This
+branch has **no CI workflow** until a later round adds
+`.github/workflows/ci.yml` + `ci-precheck.yml` shaped by `ci.toml`
+(checked in at the repo root — see below). Run `./ci.sh all` locally in
+the meantime; it is the same gate set a future workflow will call.
+
+## `ci.toml`
+
+The repo's CI contract, checked (not yet enforced — `ci-lint` is being
+built in parallel in `zackees/ci.yml`) by `ci-lint`. It declares the
+six supported platforms, the Rust workspace's public/private crate
+split and test-binary budget, the Python packaging shape (soldr
+backend, `abi3-py310`, `bundle-bins`), suites, flows, tags, and cache
+families. It does not generate YAML — it bounds what a future workflow
+may do and how it plans each run. `ci.toml`'s `linter` field pins the
+exact `ci-lint` commit a future precheck job will check out; it is a
+placeholder until that job exists.
 
 ## Commands
 
 ```bash
-./install                # verify toolchain shape (no maturin build)
-./ci.sh fmt              # one gate
-./ci.sh all              # every gate, continue past failures
-./ci.sh --list           # show registered gates
-./test                   # cargo test + maturin develop + pytest
-./lint                   # convenience: fmt + clippy + ruff
+./install                # verify uv + soldr + pinned toolchain (no wheel build)
+./ci.sh fmt               # one gate
+./ci.sh all               # every gate, continue past failures
+./ci.sh --list             # show registered gates
+./test                    # soldr cargo test + uv sync (soldr backend) + pytest
+./lint                    # convenience: fmt + clippy + ruff
 ```
 
 For the full design rationale see
-[zackees/zccache#835](https://github.com/zackees/zccache/issues/835).
+[zackees/zccache#835](https://github.com/zackees/zccache/issues/835)
+(the gates/hooks/entry-point shape) and
+[zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6) (the
+crate layout, packaging, and `ci.toml` contract).
 
 ## Hooks vs Gates
 
@@ -54,7 +94,7 @@ For the full design rationale see
 | LOC budget across the workspace        | `ci/gates/loc.py`          |
 | LOC growth on this edit                | `ci/hooks/loc_guard.py`    |
 | README presence + size                 | `ci/hooks/readme_guard.py` |
-| Bare cargo / unsafe `uv run` shape     | `ci/hooks/tool_guard.py`   |
+| Bare cargo/maturin / unsafe `uv run` shape | `ci/hooks/tool_guard.py` |
 
 If a rule would fire equally well on a `git push` from a terminal as
 from a Claude edit, write it as a gate. If it needs to know what tool
@@ -62,36 +102,42 @@ is about to run, write it as a hook.
 
 ## Repo Shape
 
-- `crates/template-core` — reusable Rust library logic
-- `crates/template-cli` — bare Rust binary (the packaged CLI)
-- `crates/template-py` — `PyO3` wrapper crate
-- `src/template_python_rust_cmd/` — thin Python surface, packaging glue,
-  Python CLI shim
+- `crates/template` — the public amalgam (published crate): `pub use`
+  re-exports only, feature-gated `dep:` wiring
+- `crates/template-cli` — the `template-cli` binary, bundled into the
+  wheel via soldr
+- `crates/template-py` — `PyO3` `_native` extension crate
+- `crates/private/` — `publish = false` crates, each compiled and
+  tested exactly once: `template-core` (domain logic),
+  `template-json` (an optional feature, as a crate),
+  `template-platform` (the host facade)
+- `src/template_python_rust_cmd/` — Python package: bindings, package
+  metadata, `platforms/` (host facade)
 - `ci/` — automation (see `ci/README.md`)
-- `action.yml`, `action/cleanup/action.yml` — composite action contract
+- `action.yml`, `action/cleanup/action.yml` — composite action
+  contract; every `run:` step is one line calling a script under
+  `action/`
 
 ## Working Rules
 
-- Grow `template-core` first; expose through `template-cli` and
-  `template-py`. Don't let them diverge on core behavior.
-- The wheel exposes `template_python_rust_cmd._native` (PyO3) AND
-  ships the cargo-built `template-cli[.exe]` as a raw wheel script at
-  `template_python_rust_cmd-<ver>.data/scripts/`. Pip extracts that
-  directly into the venv's `Scripts/` / `bin/` on install — no Python
-  shim sits in front of the binary. `ci/build_wheel.py::verify_artifacts()`
-  enforces both deliverables are present in the wheel.
+- Grow `template-core` first; expose it through `template` (the
+  amalgam), then `template-cli`/`template-py` pick it up automatically.
+  Never let the CLI and the bindings diverge on core behavior.
+- The wheel exposes `template_python_rust_cmd._native` (PyO3, no pure-
+  Python fallback) AND ships the soldr-built `template-cli[.exe]` as a
+  raw wheel script at `template_python_rust_cmd-<ver>.data/scripts/`
+  (`[tool.soldr.pep517] bundle-bins`). Pip extracts that directly into
+  the venv's `Scripts/` / `bin/` on install — no Python shim sits in
+  front of it.
 - When changing user-visible commands, update [README.md](./README.md),
   [UPDATE.md](./UPDATE.md), [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md),
-  and any affected `ci/gates/<name>.py`.
-- The release pipeline builds `template-cli` via cargo into the pinned
-  `CARGO_TARGET_DIR`, then `ci/build_wheel.py` post-processes the
-  maturin wheel to inject the binary at `.data/scripts/` with a fresh
-  RECORD row. There is no `_bin/` staging step under the package source
-  tree anymore; see #7 for the rationale (Windows `os.execv` race).
+  `ci.toml` (if the change affects platforms/suites/packaging), and any
+  affected `ci/gates/<name>.py`.
 
 ## Where to ask questions
 
-- Design rationale → [zackees/zccache#835](https://github.com/zackees/zccache/issues/835)
+- Gates/hooks/entry-point design → [zackees/zccache#835](https://github.com/zackees/zccache/issues/835)
+- Crate layout, packaging, `ci.toml` contract → [zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6)
 - Architecture → [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 - Release flow → [docs/RELEASE.md](./docs/RELEASE.md)
 - Linting policy → [LINTING.md](./LINTING.md)

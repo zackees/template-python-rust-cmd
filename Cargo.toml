@@ -1,22 +1,25 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
-    "crates/template-core",
+    "crates/template",
     "crates/template-cli",
     "crates/template-py",
+    "crates/private/template-core",
+    "crates/private/template-json",
+    "crates/private/template-platform",
 ]
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.85"
+edition = "2024"
+rust-version = "1.95.0"
 license = "MIT"
 repository = "https://github.com/example/template-python-rust-cmd"
 homepage = "https://github.com/example/template-python-rust-cmd"
 
 [workspace.dependencies]
 anyhow = "1"
-pyo3 = { version = "0.23", features = ["extension-module"] }
+pyo3 = { version = "0.29.2", features = ["extension-module", "abi3-py310"] }
 
 # Keep third-party crates release-grade even in the dev profile.
 # `cargo build` (no --release) compiles first-party crates unoptimized
@@ -28,3 +31,18 @@ pyo3 = { version = "0.23", features = ["extension-module"] }
 [profile.dev.package."*"]
 opt-level = 3
 debug = false
+
+# The set of targets ci.toml declares under [platforms]. ci-lint checks
+# these two lists stay identical (CT-* in ci.yml#6 precheck group 1) and
+# `soldr lint rust/all` additionally Clippy-checks every cfg(windows) /
+# cfg(target_os = "macos") branch against each of these, not just the host
+# — see zackees/ci.yml#6 comment 1 (soldr#3378).
+[workspace.metadata.soldr]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]

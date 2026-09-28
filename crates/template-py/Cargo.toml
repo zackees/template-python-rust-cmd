@@ -6,12 +6,19 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "PyO3 bindings for template-python-rust-cmd"
+description = "PyO3 abi3-py310 extension module for template-python-rust-cmd (template_python_rust_cmd._native)."
 
 [lib]
 name = "_native"
 crate-type = ["cdylib"]
+# No Rust test harness for the extension module: `#[pymodule]` /
+# `#[pyfunction]` code needs a live Python interpreter to exercise
+# meaningfully, which the Python test suite already does against the
+# built wheel (tests/test_bindings.py). A `cargo test -p template-py`
+# harness here would just fail to link without one.
+test = false
+doctest = false
 
 [dependencies]
-template_core = { package = "template-core", path = "../template-core" }
+template = { path = "../template", features = ["json"] }
 pyo3 = { workspace = true }

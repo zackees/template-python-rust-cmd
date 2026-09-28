@@ -9,9 +9,25 @@ post-job step — live here so the root doesn't accumulate.
 
 ```
 action/
+├── install_cli.py     # step: install the uv tool (version input handling)
+├── expose_binary.py   # step: resolve the binary, set outputs.binary-path + PATH
+├── smoke_test.py       # step: --version / --help smoke
 └── cleanup/
-    └── action.yml    # post-job uninstall + cache trim
+    ├── action.yml      # post-job uninstall + cache trim
+    └── cleanup.py       # both cleanup steps (uninstall / prune-cache)
 ```
+
+Every `run:` step in both `action.yml` files is a single line —
+`python3 ${{ github.action_path }}/<script>.py ...` — never inline
+shell logic. `${{ github.action_path }}` matters: a consumer's
+`uses: zackees/template-python-rust-cmd@v1` runs with the *consumer's*
+working directory, so a bare relative path like `action/install_cli.py`
+would resolve against their checkout, not this action's own files.
+`github.action_path` always points at this action's own files
+regardless of where it's consumed from. See
+[zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6) round 1
+— this replaced multi-line `run: |` shell blocks with `if`/`else` and
+`2>/dev/null || true` control flow.
 
 ## Why this split
 

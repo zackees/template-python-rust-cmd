@@ -1,58 +1,86 @@
 # `crates/`
 
-The Rust workspace. Three crates share `template-core`'s logic; the
-binary and the PyO3 bindings depend on it but never on each other.
+The Rust workspace. Shaped by [zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6)
+(round 1) around one rule: **one published amalgam, several unpublished
+crates that are each compiled and tested exactly once.**
 
 ## Layout
 
 ```
 crates/
-├── template-core/      # pure Rust domain logic; no Python concerns
-├── template-cli/       # bare Rust binary; the packaged CLI backend
-└── template-py/        # PyO3 wrapper; exposes Rust to Python
+├── template/            # PUBLIC: the amalgam. pub use re-exports only.
+├── template-cli/        # PUBLIC-ish: the `template-cli` binary. Bundled
+│                         # into the wheel by soldr (bundle-bins).
+├── template-py/         # PUBLIC-ish: the PyO3 `_native` extension.
+└── private/              # publish = false. No [features]. No optional deps.
+    ├── template-core/    # portable domain logic
+    ├── template-json/    # a "feature" as a crate: hand-rolled JSON
+    └── template-platform/ # the host-platform facade (see its README)
 ```
 
 ## Dependency direction (don't break this)
 
 ```
 template-cli ──┐
-               ├──► template-core
-template-py ───┘
+               ├──► template ──┬──► template-core ──► template-platform
+template-py ───┘               └──► template-json ──► template-core
 ```
 
-Anything that needs to behave the same in Python AND in the CLI lives
-in `template-core`. The other two crates translate domain types into
-their respective surfaces — argv parsing + exit codes for the CLI,
-PyO3 conversions for the bindings.
+`template` is the only crate `template-cli` and `template-py` depend
+on — never `template-core`/`template-json` directly. `template` itself
+carries no logic: it is `pub use` re-exports gated by Cargo features
+(`json = ["dep:template-json"]`), so the private crates stay compiled
+and unit-tested exactly once regardless of how many public surfaces
+consume them.
+
+## Why a public/private split
+
+Before this round, `template-core`/`template-cli`/`template-py` were
+flat siblings and `template-core` WAS the public surface. That meant
+any new capability had to either bloat `template-core`'s own API or
+grow a second public crate — no controlled way to ship an optional
+capability without shipping its compile cost to every consumer.
+`crates/private/*` fixes that: each private crate is `publish = false`,
+declares no `[features]` of its own, and is wired into the public
+surface with plain `dep:` feature gating on the `template` amalgam.
+Adding a capability means adding a private crate and one line in
+`template`'s `[features]` table — never a `#[cfg(feature = ...)]`
+branch inside shared logic.
+
+## The platform facade
+
+`template-core` (and, transitively, everything else) reaches the OS
+through exactly one door: `crate::platform::*`, aliased from
+`template-platform`. See `crates/private/template-platform/README.md`
+for the full pattern — it is the same shape soldr, zccache, and
+kernal-api use, confined by `ci.toml`'s `[allow] platform-selector` /
+`platform-code` and (eventually) a Dylint boundary check.
 
 ## Adding a new crate
 
-1. `cargo new --lib crates/<name>` (or `--bin` for an executable).
-2. Add `<name>` to `members` in `Cargo.toml` at the repo root.
+1. `soldr cargo new --lib crates/private/<name>` (or the public
+   `crates/<name>` if it genuinely needs its own published artifact —
+   rare; prefer adding to `template`'s feature table instead).
+2. Add `<name>` to `members` in the root `Cargo.toml`.
 3. Use `version.workspace = true`, `edition.workspace = true`, and the
-   other inherited package fields — the workspace owns version
-   alignment with the Python wheel.
-4. Add a README.md (this directory's `readme_guard` requires it).
-5. The new crate is automatically picked up by `cargo check
-   --workspace` (the `build` gate) and `cargo clippy --workspace` (the
-   `clippy` gate). No CI changes needed.
+   other inherited package fields.
+4. Private crates: `publish = false`, no `[features]`, no optional
+   deps, `[lib] doctest = false`, and at least one real `#[test]`.
+5. Add a README.md (this directory's `readme_guard` requires it).
+6. Register the crate's test binary in `ci.toml`'s
+   `[rust.tests].binaries` — an undeclared test binary is a precheck
+   finding (`ci.yml#6` §2 group 7).
 
 ## Workspace conventions
 
 - `Cargo.toml` at the repo root owns `version`, `edition`,
-  `rust-version`, `license`, `repository`, `homepage`. Member crates
-  inherit them with `.workspace = true`.
+  `rust-version`, `license`, `repository`, `homepage`, and
+  `[workspace.metadata.soldr] targets` (must match `ci.toml`'s
+  `[platforms]`). Member crates inherit the package fields with
+  `.workspace = true`.
 - Shared deps go in `[workspace.dependencies]`; member crates pin
   with `{ workspace = true }`.
 - Toolchain is pinned by `rust-toolchain.toml` at the repo root; do
   not override per-crate.
-
-## Where new logic goes
-
-- **Reusable domain logic** → `template-core`.
-- **CLI subcommands** → `template-cli`. Adding a subcommand means
-  updating `action.yml`'s shell snippets too (and
-  `ci/gates/action_surface.py` will verify the binary surface
-  matches).
-- **Python-callable APIs** → `template-py`. Keep PyO3 decorators
-  here, not in `template-core`.
+- Every Rust command goes through `soldr` (`soldr cargo ...`) — never
+  bare `cargo`. See `ci/gates/*.py` for the canonical invocations.

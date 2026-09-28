@@ -27,18 +27,23 @@ for the full rationale.
 ## Registered gates and ordering
 
 The canonical run order is owned by `ci.py::GATE_ORDER`, not by the
-filesystem order of this directory. The order roughly reflects cost:
+filesystem order of this directory. The order roughly reflects cost.
+Every Rust/wheel command goes through `soldr` — never bare
+`cargo`/`maturin` (zackees/ci.yml#6 round 1, `RUST-001`/`PKG-003`):
 
 1. `loc` — workspace LOC budget (cheap directory walk).
-2. `fmt` — `cargo fmt --check`.
-3. `clippy` — `cargo clippy --workspace --all-targets -D warnings`.
+2. `fmt` — `soldr cargo fmt --check`.
+3. `clippy` — `soldr cargo clippy --workspace --all-targets --locked -D warnings`.
 4. `ruff` — Python linting + format check.
-5. `build` — `cargo check --workspace` (**FATAL**: a failing build
-   short-circuits the rest of the run since downstream gates against
-   an uncompiled tree only emit noise).
-6. `test` — `cargo test --workspace` + `pytest`.
-7. `action_yaml` — static parse of the composite action contract.
-8. `action_surface` — runtime check that subcommands referenced from
+5. `build` — `soldr cargo check --workspace --locked` (**FATAL**: a
+   failing build short-circuits the rest of the run since downstream
+   gates against an uncompiled tree only emit noise).
+6. `test` — `soldr cargo test --workspace --locked` + `uv sync`
+   (installs the project through the soldr PEP 517 backend) + `pytest`.
+7. `backend_smoke` — `uv build --wheel` through the soldr backend
+   (Linux-only; see the gate's docstring for why).
+8. `action_yaml` — static parse of the composite action contract.
+9. `action_surface` — runtime check that subcommands referenced from
    `action.yml` exist in the built binary.
 
 ## Gates vs. hooks

@@ -3,26 +3,42 @@
 Canonical scaffold for a hybrid Rust + Python package with two native
 deliverables:
 
-- a bare Rust command shipped into the Python install as the CLI backend
+- a Rust CLI binary (`template-cli`) shipped inside the Python wheel
 - a `PyO3` extension module exposed to Python as a `.pyd` / `.so`
 
 This repo is a **template** — every future hybrid Rust+Python project
 seeded from `gh repo create --template zackees/template-python-rust-cmd`
-inherits its CI gates, hooks, and uv-run discipline by construction. If
-you're auditing the CI shape of a downstream consumer, the source of
-truth is here.
+inherits its crate layout, packaging shape, gates, hooks, and uv-run
+discipline by construction. It is also the fleet **reference repo**
+for the `rust-pypi-app` CI profile: [zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6)
+evolves that profile's `ci.toml` contract and `ci-lint` checker from
+what actually works here, one measured round at a time. If you're
+auditing the CI shape of a downstream consumer, or of the fleet
+contract itself, the source of truth is here.
 
-The design rationale lives in [`zackees/zccache#835`](https://github.com/zackees/zccache/issues/835).
-Each rule (1–10) has a one-line summary in [CLAUDE.md](./CLAUDE.md);
-the rules and where they're implemented are also covered in
-[`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
+The gates/hooks/entry-point design rationale lives in
+[`zackees/zccache#835`](https://github.com/zackees/zccache/issues/835)
+(rules 1–10, summarized in [CLAUDE.md](./CLAUDE.md)); the crate layout
+and packaging shape come from
+[`zackees/ci.yml#6`](https://github.com/zackees/ci.yml/issues/6).
+
+## `ci.toml`
+
+The repo root has a checked-in `ci.toml` — the CI contract a future
+`ci-lint` precheck will validate this repo against. It declares the
+six platforms this template claims to support, the Rust workspace's
+public/private crate split and declared test binaries, the Python
+packaging shape, suites, flows, tags, and cache families. **It does
+not generate YAML**, and as of this branch there is no
+`.github/workflows/ci.yml` reading it yet — see "CI status" below.
 
 ## Repo Layout
 
 ```text
 .
+├── ci.toml                     # the CI contract (see above)
 ├── Cargo.toml                  # Rust workspace root
-├── pyproject.toml              # Python package + maturin build config
+├── pyproject.toml              # Python package + soldr build backend config
 ├── rust-toolchain.toml         # pinned Rust toolchain
 ├── action.yml                  # composite GitHub Action (root entry)
 ├── action/cleanup/action.yml   # paired post-job cleanup action
@@ -30,60 +46,76 @@ the rules and where they're implemented are also covered in
 ├── ci.py                       # PEP 723 dispatcher (called by ci.sh)
 ├── ci/
 │   ├── gates/                  # repo-state checks (run on every push)
-│   ├── hooks/                  # agent-intent guards (Claude Code only)
-│   ├── build_wheel.py          # release-flow: stage CLI + maturin build
-│   └── publish.py              # release-flow: twine upload (guarded)
-├── .github/workflows/ci.yml    # 8-platform matrix; every step is ./ci.sh
+│   └── hooks/                  # agent-intent guards (Claude Code only)
 ├── .claude/settings.json       # hook wiring for Claude Code
 ├── crates/
-│   ├── template-core/          # reusable Rust library logic
-│   ├── template-cli/           # bare Rust binary
-│   └── template-py/            # PyO3 bindings crate
+│   ├── template/                # PUBLIC amalgam: pub use re-exports only
+│   ├── template-cli/            # the template-cli binary
+│   ├── template-py/             # PyO3 _native extension
+│   └── private/                  # publish = false; compiled/tested once
+│       ├── template-core/        # domain logic
+│       ├── template-json/        # an optional feature, as a crate
+│       └── template-platform/    # the host-platform facade
 ├── src/template_python_rust_cmd/
 │   ├── __init__.py             # package version + public imports
 │   ├── _native.pyi             # typing stub for the PyO3 surface
-│   └── bindings.py             # Python wrapper around the extension
-│   # `template-cli[.exe]` is NOT under the package — it's injected into
-│   # the wheel's <name>-<ver>.data/scripts/ directory by ci/build_wheel.py
-│   # and pip drops it straight into the venv's Scripts/ (Win) or bin/
-│   # (POSIX) on install. See src/template_python_rust_cmd/README.md.
+│   ├── bindings.py             # Python wrapper around the extension
+│   └── platforms/               # host-platform facade (Python side)
+│   # template-cli is NOT under the package — the soldr PEP 517 backend
+│   # bundles it into the wheel's <name>-<ver>.data/scripts/ directory
+│   # (`[tool.soldr.pep517] bundle-bins`), and pip drops it straight
+│   # into the venv's Scripts/ (Win) or bin/ (POSIX) on install.
 ├── tests/                      # pytest fixtures + gate contract tests
 └── docs/
     ├── ARCHITECTURE.md
     └── RELEASE.md
 ```
 
+## CI status on this branch
+
+`zackees/ci.yml#6` round 1 (this change) restructured the crate/package
+layout and deleted the previous `.github/workflows/ci.yml` — it queued
+a retired `macos-13` runner for 24h on every run and never passed (0 of
+27 historical runs succeeded). **There is no CI workflow on this branch
+right now.** A later round adds `.github/workflows/ci.yml` +
+`ci-precheck.yml`, planned by `ci.toml` and checked by `ci-lint`. Until
+then, `./ci.sh all` is the local equivalent of what that workflow will
+run.
+
 ## Development Flow
 
 ```bash
-./install        # verify uv, rustup, and pinned toolchain
-./ci.sh fmt      # one gate
-./ci.sh all      # every gate, continue past failures
-./test           # cargo test + maturin develop + pytest (full build)
-./publish        # guarded twine upload (must set _ENABLED first)
+./install        # verify uv, soldr, and the pinned toolchain
+./ci.sh fmt       # one gate
+./ci.sh all       # every gate, continue past failures
+./test            # soldr cargo test + uv sync (soldr backend) + pytest
 ```
 
 The dispatcher's flag discipline (`uv run --no-project --script`) is
 load-bearing — see [`ci.sh`](./ci.sh) for the rationale. Bare `uv run`
-on a maturin-backed project walks up to `pyproject.toml` and triggers a
+on a soldr-backed project walks up to `pyproject.toml` and triggers a
 full wheel build *before* your script starts, blowing up a 200 ms gate
-into a 5+ minute cold compile. The wrapper exists to keep that flag
-combo in one place.
+into a multi-minute cold compile. The wrapper exists to keep that flag
+combo in one place. Every Rust/wheel command goes through `soldr` —
+never bare `cargo`/`maturin` (`ci/hooks/tool_guard.py` enforces this
+for agent sessions; the future `ci-lint` precheck enforces it for
+everyone).
 
 ## CI Surface
 
 `./ci.sh all` runs every gate registered in `ci.py::GATE_ORDER`:
 
 | Gate              | What it does                                                              |
-|-------------------|---------------------------------------------------------------------------|
+|-------------------|-----------------------------------------------------------------------------|
 | `loc`             | Workspace LOC budget (warn > 1000, fail > 1500).                          |
-| `fmt`             | `cargo fmt --all -- --check`.                                             |
-| `clippy`          | `cargo clippy --workspace --all-targets -D warnings`.                     |
-| `ruff`            | `ruff check` + `ruff format --check` over src / tests / ci.               |
-| `build`           | `cargo check --workspace --all-targets`. **Fatal** — halts `all` on fail. |
-| `test`            | `cargo test --workspace` + `maturin develop` + `pytest`.                  |
-| `action_yaml`     | Structural check of `action.yml` + `action/cleanup/action.yml`.           |
-| `action_surface`  | Subcommands referenced from `action.yml` exist in `template-cli --help`. |
+| `fmt`             | `soldr cargo fmt --all -- --check`.                                        |
+| `clippy`          | `soldr cargo clippy --workspace --all-targets --locked -D warnings`.       |
+| `ruff`            | `ruff check` + `ruff format --check` over Python sources.                  |
+| `build`           | `soldr cargo check --workspace --all-targets --locked`. **Fatal** — halts `all` on fail. |
+| `test`            | `soldr cargo test --workspace --locked` + `uv sync` + `pytest`.            |
+| `backend_smoke`   | `uv build --wheel` through the soldr PEP 517 backend (Linux-only).         |
+| `action_yaml`     | Structural check of `action.yml` + `action/cleanup/action.yml`.            |
+| `action_surface`  | Subcommands referenced from `action.yml` exist in `template-cli --help`.   |
 
 `build` is the only fatal gate: a failing build would make every later
 gate produce noise instead of signal. See [zccache#835 rule 7](https://github.com/zackees/zccache/issues/835).
@@ -92,18 +124,23 @@ gate produce noise instead of signal. See [zccache#835 rule 7](https://github.co
 
 The wheel contains:
 
-- the PyO3 extension module at `template_python_rust_cmd._native`, and
-- the cargo-built `template-cli[.exe]` binary at
-  `template_python_rust_cmd-<ver>.data/scripts/` — pip extracts this
-  straight into the venv's `Scripts/` (Windows) or `bin/` (POSIX)
-  directory on install, with no Python wrapper in front of it. See
+- the PyO3 extension module at `template_python_rust_cmd._native`
+  (`abi3-py310` — one wheel per platform, no per-CPython-version
+  matrix), and
+- the `template-cli[.exe]` binary at
+  `template_python_rust_cmd-<ver>.data/scripts/`, staged by the soldr
+  backend's `bundle-bins` — pip extracts this straight into the venv's
+  `Scripts/` (Windows) or `bin/` (POSIX) directory on install, with no
+  Python wrapper in front of it. See
   [#7](https://github.com/zackees/template-python-rust-cmd/pull/7) for
   why we avoid `[project.scripts]` (Windows `os.execv` is emulated and
   races the shell prompt ahead of the child's stdout).
 
-`./build_wheel.py` orchestrates the maturin build, verifies the wheel
-contains both deliverables, and cleans up. `./publish.py` is the
-guarded upload — it exits until `_ENABLED = True` is set.
+`uv build` (sdist + wheel) and `uv sync` (project install) both go
+through the same backend; there is no separate `build_wheel.py`
+script and no post-build wheel surgery. Publishing to PyPI is not
+implemented on this branch — mock trusted-publish support is a later
+`zackees/ci.yml#6` round's work (see `docs/RELEASE.md`).
 
 ## Composite Action
 
@@ -120,3 +157,5 @@ Downstream consumers can pin this repo as a composite action:
 The action installs the package via `uv tool install`, exposes
 `template-cli` on PATH, and emits `binary-path` as an output. The
 cleanup sibling step removes the install and prunes the uv cache.
+Every `run:` step in both `action.yml` files is one line calling a
+Python script under `action/` — no inline shell logic.

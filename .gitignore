@@ -24,6 +24,7 @@ target
 __pycache__/
 *.py[cod]
 .venv/
+.venv-smoke/
 dist/
 build/
 *.egg-info/
@@ -31,10 +32,17 @@ build/
 .ruff_cache/
 .mypy_cache/
 
-# Maturin extension module built in-place by `maturin develop`
+# Extension module built in-place (soldr PEP 517 backend / `uv sync`)
 src/template_python_rust_cmd/_native*.pyd
 src/template_python_rust_cmd/_native*.so
 src/template_python_rust_cmd/_native*.dylib
 
 # Cache used by ci/hooks/check-on-start.py
 .cache/
+
+# Vendored cargo registry sources + resolver cache state (soldr's local
+# dependency cache; not part of the repo, environment-specific, and large)
+.cargo/registry/
+.cargo/.global-cache
+.cargo/.package-cache
+.cargo/.package-cache-mutate

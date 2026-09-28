@@ -1,17 +1,26 @@
-"""Test gate: `cargo test --workspace` + `pytest`.
+"""Test gate: `soldr cargo test --workspace --locked` + wheel-installed pytest.
 
-This is one of the named entry points that legitimately *needs* the
-extension module built (pytest imports `template_python_rust_cmd._native`).
-We sync the dev deps with `--no-install-project` and let a direct
-`maturin develop` materialize the extension module before pytest runs —
-deliberately NOT via the PEP 517 backend (soldr), whose compile daemon
-cannot spawn on GHA macOS/Windows runners (zackees/soldr#1300). The
-backend path is covered by the `backend_smoke` gate on Linux.
+Two steps:
 
-Reserve this opt-in to the build for named entry points — see [zccache#835
-rule 5](https://github.com/zackees/zccache/issues/835). Other gates use
-`./ci.sh`'s `--no-project --script` discipline so they don't pay the
-maturin cost.
+1. `soldr cargo test --workspace --locked` — every declared Rust test
+   binary (`ci.toml`'s `[rust.tests].binaries`): the `template-core`,
+   `template-platform`, and `template-json` unit harnesses, plus the
+   `template:test:api` and `template-cli:test:cli` integration targets.
+2. `uv sync --frozen` — installs the project itself through the real PEP
+   517 backend (`build-backend = "soldr"`), which builds the `_native`
+   extension AND bundles `template-cli` into the venv's `Scripts`/`bin`
+   via `[tool.soldr.pep517] bundle-bins` (see pyproject.toml). Then
+   `pytest` runs against that installed package — the same artifact
+   shape a real `pip install` produces, not an in-place `cargo build`
+   the test harness reads around.
+
+Deliberately does NOT call `maturin develop` directly (that was this
+gate's previous shape). `ci/gates/*.py` must never invoke bare `cargo` or
+`maturin` — see zackees/ci.yml#6 round 1 (`RUST-001`/`PKG-003`). Reserve
+this opt-in to a full project sync for named entry points — see
+[zccache#835 rule 5](https://github.com/zackees/zccache/issues/835).
+Other gates use `./ci.sh`'s `--no-project --script` discipline so they
+don't pay that cost.
 """
 
 from __future__ import annotations
@@ -30,51 +39,26 @@ def _run(cmd: list[str]) -> int:
 
 
 def run() -> int:
-    if shutil.which("cargo") is None:
-        print("cargo not on PATH; cannot run test gate", file=sys.stderr)
+    if shutil.which("soldr") is None:
+        print("soldr not on PATH; cannot run test gate", file=sys.stderr)
         return 1
     if shutil.which("uv") is None:
         print("uv not on PATH; cannot run test gate", file=sys.stderr)
         return 1
 
-    rc = _run(["cargo", "test", "--workspace"])
+    rc = _run(["soldr", "cargo", "test", "--workspace", "--locked"])
     if rc != 0:
         return rc
 
-    # Materialize the dev dependency group (maturin, pytest) WITHOUT
-    # installing the project itself. A plain `uv run` here would sync
-    # the project editable through the PEP 517 backend (soldr), and
-    # soldr's compile daemon cannot spawn on GHA macOS/Windows runners
-    # (zackees/soldr#1300): macOS dies with "embedded compile dispatch
-    # failed after 30000ms budget: NotRunning", Windows wedges the step
-    # for an hour. The extension module is instead built by the direct
-    # `maturin develop` call below, which does not route through the
-    # backend. The backend itself is exercised by the `backend_smoke`
-    # gate on Linux, where the daemon spawns fine.
-    rc = _run(["uv", "sync", "--no-install-project"])
+    # Installs the project itself via the soldr PEP 517 backend: builds
+    # `_native` and bundles `template-cli`, then `uv` installs the wheel
+    # into .venv. This is the real packaging path, not a bare `maturin
+    # develop` shortcut.
+    rc = _run(["uv", "sync", "--frozen"])
     if rc != 0:
         return rc
 
-    # `maturin develop` builds + installs the extension module into the
-    # synced venv directly (no PEP 517 backend involved). `--no-sync`
-    # keeps uv from re-syncing (and re-triggering the backend build).
-    rc = _run(
-        [
-            "uv",
-            "run",
-            "--no-sync",
-            "maturin",
-            "develop",
-            "--uv",
-            "--profile",
-            "dev",
-        ]
-    )
-    if rc != 0:
-        return rc
-
-    rc = _run(["uv", "run", "--no-sync", "pytest"])
-    return rc
+    return _run(["uv", "run", "--no-sync", "pytest"])
 
 
 if __name__ == "__main__":

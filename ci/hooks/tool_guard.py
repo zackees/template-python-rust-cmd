@@ -15,9 +15,11 @@ Rejects:
     or needs to route through a named opt-in entry point.
 
 The hook is conservative — it only blocks command *shapes*, never
-specific arguments. The named build entry points
-(`./test`, `./build`, `ci/build_wheel.py`) are detected by the leading
-token of the about-to-run command and are exempt.
+specific arguments. The named build entry points (`./test`, `./build`,
+`./install`) are detected by the leading token of the about-to-run
+command and are exempt. `soldr` invocations are always exempt (it's
+the required entry point for compile-bearing Rust/wheel work — see
+zackees/ci.yml#6 round 1).
 """
 
 from __future__ import annotations
@@ -38,20 +40,28 @@ RUST_TOOLS = {
     "rust-gdb",
     "rust-lldb",
     "rust-analyzer",
+    # maturin is soldr's own dependency (invoked as `soldr wheel` or via
+    # the soldr PEP 517 backend), never a direct entry point in this
+    # repo — see zackees/ci.yml#6 round 1 (`PKG-003`).
+    "maturin",
 }
 PYTHON_TOOLS = {"python", "python3", "pip", "pip3"}
 
-# Routing through one of these is the documented opt-in to the full
-# maturin build context (rule 5 of zackees/zccache#835). These are
-# detected by the leading shell token after env-stripping; either with
-# or without a leading `./` and any extension.
+# Routing through one of these is the documented opt-in to a full
+# project sync / soldr-driven build context (rule 5 of
+# zackees/zccache#835). These are detected by the leading shell token
+# after env-stripping; either with or without a leading `./` and any
+# extension.
+#
+# `build_wheel.py` and `publish.py` were removed in zackees/ci.yml#6
+# round 1 (the soldr PEP 517 backend's `bundle-bins` replaced the
+# former; mock publish is a later round's work — see `docs/RELEASE.md`)
+# and are deliberately NOT listed here: removing an entry point only
+# narrows what bypasses protection, never weakens what this hook blocks.
 BUILD_ENTRY_POINTS = {
     "test",
     "build",
-    "publish",
     "install",
-    "build_wheel.py",
-    "publish.py",
     "test.py",
 }
 
@@ -214,7 +224,7 @@ def _is_named_build_entry(words: list[str]) -> bool:
     head = _program_name(words[0])
     if head in BUILD_ENTRY_POINTS:
         return True
-    # `uv run --no-project --script ci/build_wheel.py` — only scoped to
+    # `uv run --no-project --script ci/gates/test.py` — only scoped to
     # uv invocations so that bare `cargo build` doesn't pass just because
     # `build` is a named entry point.
     if head == "uv" and len(words) > 1 and words[1] == "run":
@@ -296,10 +306,10 @@ def _check_segment(seg: str) -> tuple[str, str] | None:
             return (
                 "uv run",
                 "Use `./ci.sh <gate>` for lint/gate invocations, or run "
-                "your build through a named entry point (./test, ./build, "
-                "ci/build_wheel.py). Bare `uv run` walks up to pyproject.toml "
-                "and triggers the wheel build (soldr PEP 517 backend driving "
-                "maturin) before your script "
+                "your build through a named entry point (./test, ./install). "
+                "Bare `uv run` walks up to pyproject.toml "
+                "and triggers the wheel build (soldr PEP 517 backend) "
+                "before your script "
                 "starts. Add `--no-project --script` to skip discovery and "
                 "use the PEP 723 inline-deps path.",
             )

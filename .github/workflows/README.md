@@ -1,66 +1,65 @@
 # `.github/workflows/`
 
-GitHub Actions workflows. Currently just `ci.yml`. Other workflows
-(release-auto, build-dist, etc.) get added here as the template evolves.
+**Empty on this branch.** [zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6)
+round 1 deleted the previous `ci.yml` here — it ran an 8-entry native
+matrix with bare `cargo`/`maturin`, no `setup-soldr`, no
+`timeout-minutes`, `continue-on-error: true` on 8 of 9 gate steps, and
+queued a retired `macos-13` runner for 24h on every run (0 of 27
+historical runs ever succeeded; see the round's PR body for the
+evidence). This directory intentionally has no workflow file right
+now rather than one patched to limp along on the old crate layout.
 
-## `ci.yml`
+## What comes back, and when
 
-The canonical CI workflow. One runner per platform, every step is a
-`run: ./ci.sh <gate>` line — no multi-line shell. The 8-platform matrix
-covers:
+A later `zackees/ci.yml#6` round adds exactly two files here, per the
+issue's design (§2 "Two workflows: precheck gates everything"):
 
-- linux-x86, linux-x86-musl
-- linux-arm, linux-arm-musl
-- mac-x86, mac-arm
-- windows-x86, windows-arm
+- **`ci.yml`** — the only workflow with `pull_request`
+  (`opened`/`synchronize`/`reopened`/`edited`), `push: main`,
+  `schedule`, and `workflow_dispatch` triggers. Its first job calls
+  `ci-precheck.yml` via `workflow_call`; every other job `needs:` it.
+- **`ci-precheck.yml`** — `workflow_call` only. Runs on the system
+  `python3` (no tool installs), parses and validates `ci.toml` and the
+  repo against it, and emits `plan.json` — the exact lanes, platforms,
+  suites, and cache mode for that run. `ci.yml`'s jobs read the plan
+  through `fromJSON`; none of them contain their own selection logic.
 
-### Step contract
+No other workflow file is added. `ci.toml` (repo root) is the contract
+those two files will implement — platforms, suites, flows, tags, and
+cache families are all declared there, not hand-written into YAML.
 
-Every gate step has the same shape:
+## Local equivalent, right now
+
+```
+./ci.sh all
+```
+
+runs the same gate set (`ci.py::GATE_ORDER`) a future `ci.yml` step
+would call — same bytes, same order, `build` fatal the same way. See
+`docs/ARCHITECTURE.md` and `CLAUDE.md` for the fuller picture, and
+`ci.toml`'s `[local]` table for the planned `bosn → act` local-runner
+story (also not wired up yet).
+
+## Step shape (once workflows return)
+
+Every gate step will have the same one-line shape — no multi-line
+shell, no `shell: pwsh|cmd|powershell`:
 
 ```yaml
 - name: <gate>
   id: <gate>
-  continue-on-error: true   # except `build`
   run: ./ci.sh <gate>
 ```
 
-A final `report-failures` step inspects `steps.<id>.outcome` for each
-gate and exits 1 with a summary if anything failed. The exception is
-`build`: it's the only fatal step. A failing build halts the matrix
-job because every downstream gate would emit noise against an
-uncompiled tree (see [zccache#835 rule 7](https://github.com/zackees/zccache/issues/835)).
+Actions pinned by full commit SHA with a version comment, every job
+carrying `timeout-minutes`, runner labels explicit (`ubuntu-24.04`,
+never `-latest`) — see `ci.toml`'s precheck group 2 in
+[zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6) for the
+full list of what the future precheck will enforce.
 
-### Caching policy
+## Adding a workflow
 
-- `actions/setup-python` with `uv` cache key keyed off `uv.lock`.
-- Rust toolchain cache keyed off `rust-toolchain.toml`.
-- `target/` cache keyed off `Cargo.lock` + the toolchain version.
-
-The cargo cache is shared across `fmt`, `clippy`, `build`, and `test`
-within a single runner because they all live on the same matrix entry —
-splitting them across separate matrix entries would defeat that
-amortization (and is the historical anti-pattern this workflow shape
-fixes).
-
-### Local reproducibility
-
-Anything you can do here, you can do locally:
-
-```
-./ci.sh fmt
-./ci.sh clippy
-./ci.sh all
-```
-
-The bytes are identical because both paths call the same
-`ci/gates/<name>.run()`.
-
-### Adding a workflow
-
-New workflows belong here as `.github/workflows/<name>.yml`. Keep them
-thin: orchestration only, logic in Python under `ci/`. If a workflow
-needs a script that isn't a gate (e.g., a release pipeline step), put
-it under `ci/` with a `def main() -> int` entry point and call it the
-same way: `run: ./ci.sh` is fine for gates, or a dedicated
-`run: uv run --no-project --script ci/<name>.py` for one-offs.
+Don't, on this branch, without the orchestrating round's explicit
+go-ahead — see `CLAUDE.md` in this repo and
+[zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6): only
+`ci.yml` and `ci-precheck.yml` are ever allowed here.

@@ -40,22 +40,31 @@ except ImportError:  # pragma: no cover
 
 ROOT = Path(__file__).resolve().parents[2]
 ACTION = ROOT / "action.yml"
-BINARY_NAME = "template-cli.exe" if sys.platform == "win32" else "template-cli"
+
+# Host-branching lives only in the `platform-code` allowlist paths
+# (ci.toml's `[allow] platform-code`): `crates/private/template-platform/
+# src/platforms/**` and `src/template_python_rust_cmd/platforms/**`. This
+# import re-uses the second one instead of calling `sys.platform` inline
+# — importing it never needs the `_native` extension to be built (see
+# that module's docstring).
+sys.path.insert(0, str(ROOT / "src"))
+from template_python_rust_cmd.platforms import cli_binary_name  # noqa: E402
+
+BINARY_NAME = cli_binary_name()
 
 
 def _binary_path() -> Path | None:
     """Locate `template-cli` for the runtime --help probe.
 
     Searches, in order:
-      1. `CARGO_TARGET_DIR/{release,debug}/` if the env var is set —
-         `ci/build_wheel.py` pins this to
-         `~/.template-python-rust-cmd/cargo-target/wheel-build/` so the
-         wheel build's binary doesn't get rebuilt every time.
+      1. `CARGO_TARGET_DIR/{release,debug}/` if the env var is set, for
+         a plain `soldr cargo build -p template-cli` flow.
       2. The repo's `target/{release,debug}/` for the `./test` /
-         `cargo build` flow.
+         `soldr cargo build` flow.
       3. PATH (`shutil.which`) for the case where the user has done
-         `pip install` / `uv tool install` of the built wheel and
-         wants the gate to validate against the installed binary.
+         `pip install` / `uv tool install` of the built wheel (soldr's
+         `bundle-bins`, see `pyproject.toml`) and wants the gate to
+         validate against the installed binary.
 
     The earlier `src/template_python_rust_cmd/_bin/` candidate was
     removed when #7 dropped the package-side staging in favor of

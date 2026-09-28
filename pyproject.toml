@@ -1,5 +1,11 @@
 [build-system]
-requires = ["soldr>=0.7.98"]
+# soldr is the only PEP 517 backend (ci.toml [python] backend = "soldr",
+# ci.yml#6 §13 / PKG-003). maturin is never a build-system requirement of
+# this package; it only appears below, as soldr's own dependency
+# (`[tool.maturin]` is soldr's config input — soldr drives a pinned
+# maturin under the hood, per soldr's README "Use soldr as your PEP 517
+# build backend").
+requires = ["soldr==0.9.25"]
 build-backend = "soldr"
 
 [project]
@@ -7,16 +13,17 @@ name = "template-python-rust-cmd"
 version = "0.1.0"
 description = "Skeleton for a Python package backed by a Rust CLI and PyO3 bindings"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 license-files = ["LICENSE"]
 authors = [{ name = "Maintainer", email = "maintainer@example.com" }]
 dependencies = []
 
-# `template-cli` on PATH is the native cargo-built binary itself,
-# injected into the wheel's <name>-<ver>.data/scripts/ directory by
-# ci/build_wheel.py's post-processing step. No Python wrapper sits in
-# front of it — `cmd → template-cli → stdout`. We don't use
+# `template-cli` on PATH is the native cargo-built binary itself. The
+# soldr PEP 517 backend bundles it straight into the wheel via
+# `[tool.soldr.pep517] bundle-bins` below — no post-build injection step
+# (ci/build_wheel.py, removed in ci.yml#6 round 1) and no Python wrapper
+# in front of it: `cmd → template-cli → stdout`. We don't use
 # `[project.scripts]` (PEP 621 / wheel console-scripts), because on
 # Windows pip generates a Python launcher .exe whose `os.execv` is
 # emulated as CreateProcess + parent-exit, racing the shell prompt
@@ -25,16 +32,45 @@ dependencies = []
 
 [dependency-groups]
 dev = [
-    "maturin>=1.7,<2",
     "pytest>=8.0.0",
     "ruff>=0.8.0",
 ]
 
+# soldr drives a pinned maturin under the hood; this section is maturin's
+# own configuration, consumed by soldr, not a direct maturin invocation
+# anywhere in this repo (ci.yml#6 round 1: "maturin only as Soldr's own
+# dependency").
 [tool.maturin]
 manifest-path = "crates/template-py/Cargo.toml"
 module-name = "template_python_rust_cmd._native"
 python-source = "src"
 features = ["pyo3/extension-module"]
+# maturin's sdist only auto-includes the Cargo dependency graph reachable
+# from `manifest-path` (crates/{template-py,template,private/*}) plus the
+# workspace root Cargo.toml/Cargo.lock. Two things a from-sdist build
+# needs are outside that graph and must be listed explicitly:
+#   - rust-toolchain.toml: not a Cargo input, but soldr refuses to build
+#     anything without a repo-pinned toolchain (see its error message).
+#   - crates/template-cli/**: not a dependency of the _native extension,
+#     but `[tool.soldr.pep517] bundle-bins` below needs that package's
+#     source to build the bundled binary.
+# Caught by "build the wheel FROM the sdist" in local validation
+# (zackees/ci.yml#6 round 1) — the plain `uv build` path never exercised
+# an actually-isolated sdist extraction, so this was silently broken.
+include = [
+    "rust-toolchain.toml",
+    { path = "crates/template-cli/**/*", format = "sdist" },
+]
+
+# soldr builds `template-cli` with `soldr build --bin` under the same
+# target/profile/cache environment as the `_native` extension, then
+# stages it into the wheel's `<name>-<ver>.data/scripts/` (pip's raw
+# wheel-script install location — see the [project] comment above) with a
+# regenerated RECORD. This replaces ci/build_wheel.py's manual
+# zipfile-surgery injection. See soldr's README, "A maturin project that
+# ships a PyO3 extension and a Cargo [[bin]] in one wheel".
+[tool.soldr.pep517]
+bundle-bins = [{ bin = "template-cli", package = "template-cli" }]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
@@ -59,12 +95,12 @@ cache-keys = [
 ]
 # NOTE on `no-build-isolation-package`: fbuild disables PEP 517
 # isolation so its setup.py-based mtime-skip can see the staged binary
-# across `pip install` invocations. The maturin backend doesn't fit
-# that pattern cleanly — disabling isolation breaks the build env's
-# automatic maturin install (uv reuses a build env without maturin,
-# and uv's preview `extra-build-dependencies` mechanism is fragile
-# here). The CARGO_TARGET_DIR pin in ci/build_wheel.py already gives
-# us the cargo-incremental win without needing to touch isolation,
-# so we leave isolation on. See zackees/template-python-rust-cmd#2
-# (item 5) — we may revisit if the maturin/uv combo grows a clean
-# no-isolation story.
+# across `pip install` invocations. The soldr backend doesn't fit that
+# pattern cleanly — disabling isolation breaks the build env's automatic
+# soldr install (uv reuses a build env without soldr, and uv's preview
+# `extra-build-dependencies` mechanism is fragile here). soldr already
+# caches by content hash under its own root (see soldr's README, "soldr
+# also caches the last successful wheel"), giving the incremental win
+# without needing to touch isolation, so we leave isolation on. See
+# zackees/template-python-rust-cmd#2 (item 5) — we may revisit if the
+# soldr/uv combo grows a clean no-isolation story.
