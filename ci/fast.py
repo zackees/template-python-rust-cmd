@@ -41,6 +41,7 @@ does not duplicate.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -94,7 +95,20 @@ def cmd_python_test(_args: argparse.Namespace) -> int:
 def cmd_wheel_build(args: argparse.Namespace) -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    return _run(["uv", "build", "--wheel", "--out-dir", str(out_dir)])
+    rc = _run(["uv", "build", "--wheel", "--out-dir", str(out_dir)])
+    if rc != 0:
+        return rc
+    wheels = sorted(out_dir.glob("*.whl"))
+    if not wheels:
+        print(f"ci/fast.py: uv build produced no .whl in {out_dir}", file=sys.stderr)
+        return 1
+    wheel_path = wheels[-1]
+    print(f"wheel: {wheel_path}")
+    gh_out = os.environ.get("GITHUB_OUTPUT")
+    if gh_out:
+        with open(gh_out, "a", encoding="utf-8") as fh:
+            fh.write(f"wheel-path={wheel_path}\n")
+    return 0
 
 
 def cmd_wheel_install(args: argparse.Namespace) -> int:

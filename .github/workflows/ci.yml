@@ -34,8 +34,15 @@ jobs:
       contents: read
     with:
       pr-title: ${{ github.event.pull_request.title || '' }}
+      event-name: ${{ github.event_name }}
+      dispatch-sha: ${{ github.event.inputs.sha || '' }}
 
-  fast:
+  # Job id MUST be "build-<platform-id>" -- ci_lint plan's
+  # `_required_job_ids` convention (zackees/ci.yml@52bd361
+  # ci_lint/plan.py), which is what `ci_lint gate` checks `needs.json`
+  # against. Only "linux-x64" is selected by [flow.pr], so this is the
+  # one required build job on an untagged PR.
+  build-linux-x64:
     name: fast (linux-x64)
     needs: precheck
     runs-on: ubuntu-24.04
@@ -55,7 +62,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: ff2c7d351d1251752488e63c484ee27198e6e006
+          ref: 52bd361dbc2756d4d49d182cb547c06d5a2ed8a3
           path: .ci-lint
           persist-credentials: false
 
@@ -76,12 +83,12 @@ jobs:
       - name: ci_lint units (compile-unit discipline, RUST-011/RUST-012)
         env:
           PYTHONPATH: .ci-lint
-        run: python3 -m ci_lint units --repo . --messages ${{ runner.temp }}/cargo-messages.jsonl
+        run: python3 -m ci_lint units --repo . --artifacts ${{ runner.temp }}/cargo-messages.jsonl
 
       - name: ci_lint tests size (test-binary budget, RUST-012)
         env:
           PYTHONPATH: .ci-lint
-        run: python3 -m ci_lint tests size --repo . --messages ${{ runner.temp }}/cargo-messages.jsonl
+        run: python3 -m ci_lint tests size --repo . --artifacts ${{ runner.temp }}/cargo-messages.jsonl
 
       - name: Run Rust tests
         run: python3 ci/fast.py rust-test
@@ -90,12 +97,14 @@ jobs:
         run: python3 ci/fast.py python-test
 
       - name: Build wheel (Soldr PEP 517 backend via uv build)
+        id: wheel-build
         run: python3 ci/fast.py wheel-build --out dist/fast-lane
 
       - name: ci_lint wheel check (PKG-003/004/005, static)
         env:
           PYTHONPATH: .ci-lint
-        run: python3 -m ci_lint wheel check --repo . --wheel-dir dist/fast-lane
+          WHEEL_PATH: ${{ steps.wheel-build.outputs.wheel-path }}
+        run: python3 -m ci_lint wheel check --repo . --wheel "$WHEEL_PATH"
 
       - name: Clean-venv wheel install
         run: python3 ci/fast.py wheel-install --wheel-dir dist/fast-lane --venv .venv-smoke --python 3.11
@@ -131,7 +140,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [precheck, fast, dylint]
+    needs: [precheck, build-linux-x64, dylint]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -144,7 +153,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: ff2c7d351d1251752488e63c484ee27198e6e006
+          ref: 52bd361dbc2756d4d49d182cb547c06d5a2ed8a3
           path: .ci-lint
           persist-credentials: false
 
