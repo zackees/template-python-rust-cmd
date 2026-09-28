@@ -4,6 +4,7 @@ extern crate rustc_ast;
 extern crate rustc_errors;
 extern crate rustc_span;
 
+use rustc_errors::DiagDecorator;
 use rustc_lint::{EarlyContext, EarlyLintPass, LintContext};
 use rustc_span::{FileName, RemapPathScopeComponents, Span};
 use std::collections::HashSet;
@@ -138,15 +139,19 @@ impl EarlyLintPass for PlatformBoundary {
 }
 
 fn emit(cx: &EarlyContext<'_>, span: Span, detail: String) {
-    cx.opt_span_lint(PLATFORM_BOUNDARY, Some(span), |diag| {
-        diag.primary_message(format!(
-            "host-platform selection outside the template-platform boundary: {detail}; \
-             the only allowed selection site is \
-             crates/private/template-platform/src/lib.rs, and native platform paths are \
-             additionally allowed under \
-             crates/private/template-platform/src/platforms/**"
-        ));
-    });
+    cx.opt_span_lint(
+        PLATFORM_BOUNDARY,
+        Some(span),
+        DiagDecorator(move |diag| {
+            diag.primary_message(format!(
+                "host-platform selection outside the template-platform boundary: {detail}; \
+                 the only allowed selection site is \
+                 crates/private/template-platform/src/lib.rs, and native platform paths are \
+                 additionally allowed under \
+                 crates/private/template-platform/src/platforms/**"
+            ));
+        }),
+    );
 }
 
 /// Production sources the boundary applies to: every `crates/**.rs` file
