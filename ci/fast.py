@@ -54,6 +54,26 @@ def _run(cmd: list[str]) -> int:
     return subprocess.run(cmd, cwd=ROOT, check=False).returncode
 
 
+def _run_isolated_soldr(cmd: list[str]) -> int:
+    """Run a `uv` command whose PEP 517 build environment installs its OWN
+    `soldr` (pyproject.toml's `requires = ["soldr==0.9.25"]`) -- a SEPARATE
+    binary from the one `.github/actions/soldr` already started a broker
+    for on PATH. Two different soldr binaries cannot share one
+    broker-owned root -- confirmed on real CI (run 36489839023, job
+    109155586748, and again for `uv build` in run 36492167256, job
+    109163261830: "the running broker was started from a different Soldr
+    image", then "soldr root ownership is busy: .../setup-soldr-soldr (no
+    daemon route claim to name the owner)"). Stripping the outer job's
+    `SOLDR_*`/`ZCCACHE_*` workspace-state env vars makes the nested PEP
+    517 build resolve its own independent soldr session instead of
+    contending for the already-claimed one. RUSTUP_HOME/CARGO_HOME/
+    RUSTUP_TOOLCHAIN stay -- those select the toolchain, not a broker
+    root."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("SOLDR_", "ZCCACHE_"))}
+    print(f"+ {' '.join(cmd)}  (SOLDR_*/ZCCACHE_* stripped -- see docstring)", flush=True)
+    return subprocess.run(cmd, cwd=ROOT, env=env, check=False).returncode
+
+
 def cmd_build_json(args: argparse.Namespace) -> int:
     """Compile (no run) every declared test binary, capturing pure
     `--message-format=json` compiler-artifact records for
@@ -85,25 +105,9 @@ def cmd_rust_test(_args: argparse.Namespace) -> int:
 def cmd_python_test(_args: argparse.Namespace) -> int:
     """Install the project through the real Soldr PEP 517 backend (builds
     `_native` and bundles `template-cli`), then run pytest against that
-    installed artifact — not an in-place `cargo build`.
-
-    `uv sync`'s isolated PEP 517 build environment installs its OWN copy
-    of the `soldr` PyPI package (pinned by pyproject.toml's
-    `requires = ["soldr==0.9.25"]`), which spawns a SEPARATE soldr binary
-    from the one `.github/actions/soldr` already installed and started a
-    broker for on PATH -- confirmed on real CI (run 36489839023, job
-    109155586748: "the running broker was started from a different Soldr
-    image", followed by "soldr root ownership is busy:
-    .../setup-soldr-soldr (no daemon route claim to name the owner)").
-    Two different soldr binaries cannot share one broker-owned root. This
-    step therefore does NOT inherit the outer job's `SOLDR_*`/`ZCCACHE_*`
-    workspace-state env vars (RUSTUP_HOME/CARGO_HOME/RUSTUP_TOOLCHAIN
-    stay -- those select the toolchain, not a broker root), so the
-    nested PEP 517 build resolves its own independent soldr session
-    instead of contending for the already-claimed one."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("SOLDR_", "ZCCACHE_"))}
-    print("+ uv sync --frozen  (SOLDR_*/ZCCACHE_* stripped -- see docstring)", flush=True)
-    rc = subprocess.run(["uv", "sync", "--frozen"], cwd=ROOT, env=env, check=False).returncode
+    installed artifact — not an in-place `cargo build`. See
+    `_run_isolated_soldr`'s docstring for why `uv sync` needs it."""
+    rc = _run_isolated_soldr(["uv", "sync", "--frozen"])
     if rc != 0:
         return rc
     return _run(["uv", "run", "--no-sync", "pytest"])
@@ -112,7 +116,7 @@ def cmd_python_test(_args: argparse.Namespace) -> int:
 def cmd_wheel_build(args: argparse.Namespace) -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    rc = _run(["uv", "build", "--wheel", "--out-dir", str(out_dir)])
+    rc = _run_isolated_soldr(["uv", "build", "--wheel", "--out-dir", str(out_dir)])
     if rc != 0:
         return rc
     wheels = sorted(out_dir.glob("*.whl"))
