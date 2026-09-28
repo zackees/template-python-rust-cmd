@@ -117,24 +117,22 @@ runs:
         # rustup Cargo without going back through the PATH-level trap.
         # We also tried setup-soldr's OWN `shims: true` (reroute every
         # bare cargo/rustc/etc through the installed soldr binary) as the
-        # external-facing analogue, but reverted it: it does NOT coexist
-        # with soldr's own internal Dylint driver-source-build fallback
-        # (`SOLDR_ALLOW_DYLINT_DRIVER_BUILD=1` -- see the `dylint` job).
-        # That fallback spawns a NESTED `cargo build` in an isolated temp
-        # directory with no `rust-toolchain.toml` of its own, expecting
-        # the plain rustup-resolved `cargo` on PATH; with `shims: true`
-        # that nested "cargo" resolves to soldr's own shim instead, which
-        # then refuses to proceed ("soldr requires a repo-pinned
-        # toolchain") -- confirmed on real CI (run 36486187381, job
-        # 109143591871: "Error: command failed: cd /tmp/.tmpuV3jKY &&
-        # env -u CARGO -u RUSTC -u RUSTUP_TOOLCHAIN ... cargo build").
-        # Neither the trap-shim script NOR `shims: true` are adopted here;
-        # see the worker report for the upstream issue draft this points
-        # to (setup-soldr's Dylint driver-build fallback should either
-        # export an explicit real-cargo path the way the trap script's
-        # `SOLDR_REAL_CARGO` does, or setup-soldr's own docs should say
-        # `shims: true` and `dylint: true` + a driver-source-build must
-        # not be combined).
+        # external-facing analogue, and initially suspected (wrongly) that
+        # it broke soldr's own internal Dylint driver-source-build
+        # fallback (`SOLDR_ALLOW_DYLINT_DRIVER_BUILD=1` -- see the
+        # `dylint` job): that fallback spawns a nested `cargo build` in an
+        # isolated temp directory with no `rust-toolchain.toml` of its
+        # own, and hits "soldr requires a repo-pinned toolchain". Removing
+        # `shims: true` did NOT fix it (run 36487047790, job
+        # 109146426618: the exact same failure, same isolated-temp-dir
+        # shape, with `shims: true` absent) -- so this is a soldr-internal
+        # defect in the driver-source-build fallback itself, independent
+        # of this action's inputs. `shims: true` stays OFF anyway (no
+        # proven benefit, one less variable); see the worker report for
+        # the upstream issue draft (setup-soldr's Dylint driver-build
+        # fallback needs its nested cargo invocation to resolve a working
+        # toolchain from an isolated temp directory that has no pin of
+        # its own -- today it doesn't, with or without shims).
         # ── Lane pass-throughs ──────────────────────────────────────────
         dylint: ${{ inputs.dylint }}
         cross-targets: ${{ inputs.cross-target }}
