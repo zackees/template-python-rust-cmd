@@ -125,7 +125,7 @@ runs:
       # zackees/setup-soldr PR #539 head SHA (fix/dylint-success-marker-identity)
       # to prove the dylint-cache/dylint-output-cache save fix end-to-end.
       # Revert to the released SHA before merging this branch anywhere.
-      uses: zackees/setup-soldr@07ff91d63ebbca859c544894ce36ab8d03b3a717 # PR #539 validation
+      uses: zackees/setup-soldr@1c7d5b17fa2fafd37e68c13503b5047d501703d1 # PR #539 validation
       with:
         version: "0.9.25" # matches pyproject.toml's `requires = ["soldr==0.9.25"]` (the PEP 517 backend pin)
         toolchain-file: "rust-toolchain.toml"
