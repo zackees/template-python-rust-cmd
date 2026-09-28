@@ -44,6 +44,17 @@ src/template_python_rust_cmd/_native*.dylib
 # `linter` pin (CI-only; a local `precheck --local` run checks it out too)
 .ci-lint/
 
+# python3 ci/local.py act's scratch state: the act event JSON, the
+# request/result files it exchanges with ci/local.py act-inner running
+# inside the bosn `act` stack container, and act's artifact-server output
+# (zackees/ci.yml#6 section 11). Never uploaded, never committed.
+.act-local/
+
+# act's default --secret-file. A developer's own opt-in channel for a
+# GITHUB_TOKEN local `act` runs of cross-repo actions/checkout steps need
+# (see ci/localrun/README.md) -- this tool never creates or reads it.
+.secrets
+
 # Vendored cargo registry sources + resolver cache state (soldr's local
 # dependency cache; not part of the repo, environment-specific, and large).
 # Unanchored (**/) so this also covers dylints/*/.cargo/ — each Dylint

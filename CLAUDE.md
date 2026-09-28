@@ -83,13 +83,46 @@ bounds what the workflow may do and how it plans each run.
 
 ## CI
 
-Run this before every push that touches a workflow, `ci.toml`, `Cargo.toml`,
-`pyproject.toml`, `bosn.toml`, or `dylints/**` (it is also the agent
-Stop-hook / pre-push gate — zackees/ci.yml#6 §11):
+### Local loop: `ci/local.py` (bosn -> act, zackees/ci.yml#6 §11)
+
+```bash
+python3 ci/local.py precheck                  # ~0.5s warm; ~1-2s cold (clones .ci-lint/ once)
+python3 ci/local.py act                       # precheck, then fast+dylint via bosn -> act
+python3 ci/local.py act --lanes fast          # just one lane
+python3 ci/local.py act --title "[ci-full] …" # exercise a different tag selection
+```
+
+`precheck` wraps the exact command below, resolving `<ci.yml checkout>`
+to a gitignored `.ci-lint/` clone/fetch of `ci.toml`'s `linter` pin
+(no-op once already at that SHA — see `ci/localrun/ci_lint_checkout.py`):
 
 ```bash
 PYTHONPATH=<ci.yml checkout> uv run --no-project --with pyyaml python3 -m ci_lint precheck --repo . --local
 ```
+
+Run `python3 ci/local.py precheck` before every push that touches a
+workflow, `ci.toml`, `Cargo.toml`, `pyproject.toml`, `bosn.toml`, or
+`action.yml` — it is also the agent's PostToolUse hook on those paths
+and its Stop hook (`.claude/settings.json` →
+`ci/hooks/local_precheck_guard.py`), so this normally runs
+automatically; run it by hand to iterate faster than the hook's
+edit-triggered cadence.
+
+`act` additionally requires `bosn`/`act`/`docker` on `PATH`: it runs the
+selected `ci.yml` jobs for real, through the `bosn.toml` `act` stack
+(pinned `act` 0.2.88 + a clang-patched runner image — see
+`ci/docker/act/README.md` for zackees/ci.yml#6 D7), then audits the
+local act cache store against `ci.toml [cache].budget`/`.retired`
+(`ACT-001`, `ci/localrun/cache_audit.py`) so a local speedup can never
+reward a cache family the remote policy forbids
+(zackees/zccache#1760). A lane not in `ci.toml [local].lanes` (any
+non-Linux platform) is reported "not covered locally", never as passed.
+**Known gap:** a full green `act` run of `fast`/`dylint` needs a
+`GITHUB_TOKEN` for `ci.yml`'s cross-repo `.ci-lint` checkout step, which
+act (unlike real GitHub Actions) never auto-populates. This tool never
+creates one; add your own PAT to a gitignored `.secrets` file at the
+repo root (act's own default `--secret-file`) to opt in — see
+`ci/localrun/README.md`'s "GITHUB_TOKEN and cross-repo checkouts".
 
 The `dylint` job's own logic lives in `ci/dylint.py` (host + every
 declared cross target, one Linux job — `soldr dylint prepare --target T`
@@ -115,6 +148,7 @@ crate layout, packaging, and `ci.toml` contract).
 | LOC growth on this edit                | `ci/hooks/loc_guard.py`    |
 | README presence + size                 | `ci/hooks/readme_guard.py` |
 | Bare cargo/maturin / unsafe `uv run` shape | `ci/hooks/tool_guard.py` |
+| Contract precheck on `.github/**`/`ci.toml`/`Cargo.toml`/`pyproject.toml`/`bosn.toml`/`action.yml` edits, and on every Stop | `ci/hooks/local_precheck_guard.py` |
 
 If a rule would fire equally well on a `git push` from a terminal as
 from a Claude edit, write it as a gate. If it needs to know what tool
