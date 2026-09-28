@@ -68,7 +68,7 @@ Two independent gotchas this module handles:
   instead, so it can never be fooled by a stale or synthetic index
   record -- only the retired-family *key* check reads the index.
 
-## GITHUB_TOKEN and cross-repo checkouts (known gap)
+## GITHUB_TOKEN and cross-repo checkouts (known gap, with a working opt-in)
 
 `ci.yml`'s `Checkout ci-lint (zackees/ci.yml, pinned)` step uses
 `actions/checkout` with an explicit `repository:` override (a different
@@ -79,14 +79,21 @@ by direct reproduction, both with no token (`Input required and not
 supplied: token`) and with an obviously-fake placeholder value
 (`authentication required: Invalid username or token`, i.e. GitHub
 rejects invalid credentials outright even for a public repo's smart-HTTP
-git clone -- it does not fall back to anonymous). `_run_lane` forwards a
-real `GITHUB_TOKEN` via act's `-s` flag only if one is already present
-in this process's own environment (never fetched by this tool, per the
-worker contract), but `bosn run --task` (bosn 0.1.3) has no
-host-env-forwarding flag, so there is currently no supported channel for
-a developer to supply one without writing it into `bosn.toml` (also
-forbidden). See the round report for the drafted upstream recommendation
-(a `bosn run --forward-env NAME` flag, or an equivalent).
+git clone -- it does not fall back to anonymous). This tool never
+fetches, embeds, prints, or writes a credential anywhere (worker
+contract: no secrets).
+
+**The opt-in that already works, with no code or bosn changes:** `act`
+defaults `--secret-file` to `.secrets` in its working directory, and
+`_run_lane` never overrides that flag. `.secrets` (gitignored by this
+repo, never created or read by this tool) sits at the bind-mounted repo
+root -- `/work/.secrets` inside the container is the same file as
+`.secrets` at this repo's root on the host. A developer who wants a
+full local `act` run of `fast`/`dylint` adds one line,
+`GITHUB_TOKEN=<their own PAT>`, to a `.secrets` file they create
+themselves; `act` picks it up automatically on the next run. This is
+act's documented mechanism, not a workaround this tool invented --
+verify with `act --help | grep secret-file`.
 
 ## Wiring
 

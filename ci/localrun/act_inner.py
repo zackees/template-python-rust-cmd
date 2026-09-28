@@ -17,22 +17,20 @@ Known gap (see README "GITHUB_TOKEN and cross-repo checkouts"):
 `ci.yml`'s `Checkout ci-lint (zackees/ci.yml, pinned)` step uses
 `actions/checkout` with an explicit `repository:` override, which
 requires a non-empty `token` input even for a public repo -- act does
-not auto-populate `github.token` the way real GitHub Actions does, and
-this tool never fetches or embeds a credential (worker contract: no
-secrets). `_run_lane` below forwards `GITHUB_TOKEN` via act's `-s` flag
-*only if it is already present in this process's environment* -- the
-same "anonymous by default" pattern zccache's and clud's act stacks
-document -- but bosn 0.1.3's `run --task` has no host-env-forwarding
-flag, so today there is no supported way to get a token into this
-container without writing it into `bosn.toml` (which the worker
-contract also forbids). This is a real, reproduced local-only gap; see
-the README for the recommended fix.
+not auto-populate `github.token` the way real GitHub Actions does. This
+tool never fetches, embeds, prints, or writes a credential anywhere
+(worker contract: no secrets). The supported opt-in is act's own
+`--secret-file` default (`.secrets` in the working directory, i.e.
+`/work/.secrets` -- gitignored, and never created by this tool): a
+developer who wants a full local run adds their own token there, and
+`act` (invoked with no `--secret-file` override below, so its stock
+default applies) picks it up automatically, exposing it as
+`${{ secrets.GITHUB_TOKEN }}` -- exactly what `actions/checkout` reads.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import time
@@ -103,12 +101,10 @@ def _run_lane(
         "--container-options",
         f"--init --label template.act-run={run_id}",
     ]
-    # Anonymous by default (matches zccache's/clud's act stacks): forward
-    # GITHUB_TOKEN only if this process's own environment already has it.
-    # Never fetched, read, or logged by this tool -- see the module
-    # docstring's "Known gap".
-    if os.environ.get("GITHUB_TOKEN"):
-        cmd += ["-s", "GITHUB_TOKEN"]
+    # No --secret-file override: act's own default (".secrets" in this
+    # process's cwd, i.e. /work/.secrets) applies. Anonymous by default --
+    # this tool never creates, reads, or logs that file. See the module
+    # docstring's "Known gap" for what it's for.
     start = time.monotonic()
     result = subprocess.run(cmd, cwd=str(WORK), check=False)
     return time.monotonic() - start, result.returncode

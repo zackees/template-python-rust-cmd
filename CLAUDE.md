@@ -118,9 +118,11 @@ reward a cache family the remote policy forbids
 (zackees/zccache#1760). A lane not in `ci.toml [local].lanes` (any
 non-Linux platform) is reported "not covered locally", never as passed.
 **Known gap:** a full green `act` run of `fast`/`dylint` needs a
-`GITHUB_TOKEN` already exported in your shell (never fetched by this
-tool) — see `ci/localrun/README.md`'s "GITHUB_TOKEN and cross-repo
-checkouts".
+`GITHUB_TOKEN` for `ci.yml`'s cross-repo `.ci-lint` checkout step, which
+act (unlike real GitHub Actions) never auto-populates. This tool never
+creates one; add your own PAT to a gitignored `.secrets` file at the
+repo root (act's own default `--secret-file`) to opt in — see
+`ci/localrun/README.md`'s "GITHUB_TOKEN and cross-repo checkouts".
 
 The `dylint` job's own logic lives in `ci/dylint.py` (host + every
 declared cross target, one Linux job — `soldr dylint prepare --target T`
