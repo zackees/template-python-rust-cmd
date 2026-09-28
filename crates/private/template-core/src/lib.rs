@@ -32,18 +32,6 @@ pub fn run_cli() -> anyhow::Result<()> {
     Ok(())
 }
 
-// RED-test marker for zackees/ci.yml#6 round 2B: proves the DYLINT LANE
-// itself (not precheck's LAYOUT-001 regex, which only matches cfg
-// patterns and does not fire on this) catches a direct concrete-tree
-// reference outside template-platform, now that the lane actually runs
-// end to end (catalogued nightly-2026-05-28). Throwaway; reverted in the
-// very next commit after the failing run is captured.
-#[allow(dead_code, path_statements, clippy::no_effect, clippy::let_unit_value)]
-fn _red_test_marker_ci_yml_6_platform_boundary() {
-    let platform_imp = ();
-    platform_imp;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
