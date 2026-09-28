@@ -1,0 +1,107 @@
+name: ci-precheck
+
+# zackees/ci.yml#6 §2. Called ONLY by ci.yml's `precheck` job
+# (`uses: ./.github/workflows/ci-precheck.yml`) -- never a standalone
+# entrypoint (`GEN-001`/`GEN-008`: one PR entrypoint). Installs nothing:
+# `ubuntu-24.04` ships system python3 3.12 and yq 4.53.6; ci_lint parses
+# YAML with PyYAML if importable, else `yq -o=json`, per zackees/ci.yml#6
+# open question 1.
+#
+# Two `ci_lint` invocations, not one: `precheck` (violations + step
+# summary) has no `--github-output` of its own, and its `--plan-out`
+# infers event_name as "pull_request"/"push" only -- wrong for
+# schedule/workflow_dispatch. `plan --github-output` is the authoritative,
+# event-aware source for this job's outputs (zackees/ci.yml@ff2c7d3's
+# actual CLI; the round's brief predates it -- see the worker report).
+
+on:
+  workflow_call:
+    inputs:
+      pr-title:
+        description: >-
+          The pull_request event's title (or "" for push/schedule/dispatch).
+          Passed as a `with:` input, then only ever read from `env:` in the
+          steps below -- never interpolated into a `run:` line
+          (script-injection rule; a title can contain arbitrary text).
+        required: false
+        type: string
+        default: ""
+      event-name:
+        description: The caller's `github.event_name` (`ci_lint plan --event-name`).
+        required: true
+        type: string
+      dispatch-sha:
+        description: "workflow_dispatch's `inputs.sha`, or \"\" for every other event."
+        required: false
+        type: string
+        default: ""
+    outputs:
+      plan:
+        description: Compact plan.json (ci_lint plan's `to_json_dict()`).
+        value: ${{ jobs.precheck.outputs.plan }}
+      platforms_json:
+        description: JSON array of selected platform ids.
+        value: ${{ jobs.precheck.outputs.platforms_json }}
+      cross_platforms_json:
+        description: JSON array of selected non-linux platform ids.
+        value: ${{ jobs.precheck.outputs.cross_platforms_json }}
+      suites_json:
+        description: JSON array of selected suite ids.
+        value: ${{ jobs.precheck.outputs.suites_json }}
+      dylint_targets_json:
+        description: JSON array of Dylint target platform ids.
+        value: ${{ jobs.precheck.outputs.dylint_targets_json }}
+      mergeable:
+        description: '"true"/"false" -- whether the current tag selection allows merging.'
+        value: ${{ jobs.precheck.outputs.mergeable }}
+
+permissions:
+  contents: read
+
+# WF-002 requires this on every workflow file, including a `workflow_call`
+# reusable one. Mirrors ci.yml's own grouping so a re-triggered precheck
+# for the same ref/PR doesn't pile up either, independent of the caller.
+concurrency:
+  group: ci-precheck-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  precheck:
+    name: precheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      platforms_json: ${{ steps.plan.outputs.platforms_json }}
+      cross_platforms_json: ${{ steps.plan.outputs.cross_platforms_json }}
+      suites_json: ${{ steps.plan.outputs.suites_json }}
+      dylint_targets_json: ${{ steps.plan.outputs.dylint_targets_json }}
+      mergeable: ${{ steps.plan.outputs.mergeable }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: b1528416e7e8d14df78fdddcd25644182330eed2
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Run precheck
+        env:
+          PYTHONPATH: .ci-lint
+          PR_TITLE: ${{ inputs.pr-title }}
+        run: python3 -m ci_lint precheck --repo . --title "$PR_TITLE"
+
+      - name: Compute plan
+        id: plan
+        env:
+          PYTHONPATH: .ci-lint
+          PR_TITLE: ${{ inputs.pr-title }}
+          EVENT_NAME: ${{ inputs.event-name }}
+          DISPATCH_SHA: ${{ inputs.dispatch-sha }}
+        run: python3 -m ci_lint plan --repo . --event-name "$EVENT_NAME" --title "$PR_TITLE" --sha "$DISPATCH_SHA" --github-output

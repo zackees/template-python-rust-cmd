@@ -2,7 +2,7 @@
 # Nothing here generates YAML: it bounds what the YAML may do and decides what each run selects.
 schema  = 3
 profile = "rust-pypi-app"
-linter  = "zackees/ci.yml@<40-hex-sha>"      # the exact ci-lint commit precheck runs
+linter  = "zackees/ci.yml@b1528416e7e8d14df78fdddcd25644182330eed2"      # the exact ci-lint commit precheck runs
 
 # ── Platforms ────────────────────────────────────────────────────────────────
 # Every platform compiles on linux (Soldr cross) and executes on its own runner.
@@ -44,7 +44,15 @@ binaries = [
 # ── Lint lanes ───────────────────────────────────────────────────────────────
 [lint.dylint]
 targets = "all-platforms"           # one check-only pass per declared target, all on Linux
-shape   = "measure"                 # round 2 decides: "multi-target" | "sequential" | "per-target-jobs"
+# shape/budget: round 2 could not measure D6 (see the worker report) --
+# the nightly-2026-02-28 Dylint driver has no catalogued asset, and
+# soldr's SOLDR_ALLOW_DYLINT_DRIVER_BUILD=1 source-build fallback fails
+# closed on real CI (nested-cargo toolchain resolution, upstream soldr
+# defect). Every "sequential" vs "multi-target" number gathered so far
+# is dominated by that failure/retry noise, not real lint time. Left at
+# round 1's starting values; a later round remeasures once the driver
+# is obtainable.
+shape   = "measure"                 # "multi-target" | "sequential" | "per-target-jobs"
 budget  = { warm = "235s", cold = "480s" }
 
 # ── Suites ───────────────────────────────────────────────────────────────────
@@ -64,8 +72,9 @@ dylint    = "all-platforms"
 budget    = { critical-path = "8m" }
 
 [flow.main]
-extends = "pr"
-cache   = "write"
+extends    = "pr"
+cache      = "write"
+pre-prune  = true
 
 [flow.release]
 platforms = "all"
@@ -74,11 +83,12 @@ wheels    = "all"
 publish   = "pypi"
 
 [flow.nightly]
-extends  = "release"
-schedule = "daily"
-cache    = "write"
-janitor  = true
-publish  = "none"
+extends    = "release"
+schedule   = "daily"
+cache      = "write"
+pre-prune  = true
+janitor    = true
+publish    = "none"
 
 # ── Tags that are not derived ────────────────────────────────────────────────
 [tags]
@@ -101,7 +111,7 @@ registry   = { via = "setup-soldr:cargo-registry",  max = "100MB", lockfile = tr
 deps       = { via = "setup-soldr:cook",            max = "150MB", lockfile = true, per = "platform" }
 compile    = { via = "setup-soldr:build-cache",     max = "150MB", lockfile = true, per = "platform", min = "1MB" }
 sdk        = { via = "setup-soldr:cross-targets",   max = "500MB", per = "cross-platform" }
-dylint-out = { via = "setup-soldr:dylint-output",   max = "500MB", lockfile = true, per = "platform", min = "1MB" }
+dylint-out = { via = "setup-soldr:dylint-output",   max = "150MB", lockfile = true, per = "platform", min = "1MB" }
 uv         = { via = "ci-lint", key = ["os", "python", "uv.lock"], max = "100MB", per = "os" }
 
 # ── Local runs: bosn → act (§11) ─────────────────────────────────────────────

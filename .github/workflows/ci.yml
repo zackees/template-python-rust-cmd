@@ -1,0 +1,173 @@
+name: ci
+
+# The ONLY workflow entrypoint in this repository (zackees/ci.yml#6 §1/§2,
+# D1 "one PR entrypoint"). `precheck` (below) calls ci-precheck.yml through
+# `workflow_call` and every other job `needs:` it, directly or transitively.
+# ci.toml's `linter` pin and this file's ci-precheck.yml checkout ref MUST
+# match (`CT-004`).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "7 3 * * *" # daily; ci.toml [flow.nightly] schedule = "daily"
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact commit SHA the release graph runs against.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  precheck:
+    uses: ./.github/workflows/ci-precheck.yml
+    permissions:
+      contents: read
+    with:
+      pr-title: ${{ github.event.pull_request.title || '' }}
+      event-name: ${{ github.event_name }}
+      dispatch-sha: ${{ github.event.inputs.sha || '' }}
+
+  # Job id MUST be exactly "fast" -- ci_lint gate's required-job-id
+  # convention (orchestrator decision on zackees/ci.yml PR #11: precheck,
+  # fast, dylint, and only when plan.needs_platform_lanes: platform-build
+  # + platform-run, added round 3).
+  fast:
+    name: fast (linux-x64)
+    needs: precheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # .cargo/config.toml enables incremental for local dev; a CI job
+      # must never cache incremental/ (ci.toml [cache] `never`, `RUST-006`)
+      # and incremental state from one job never helps a fresh checkout.
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: b1528416e7e8d14df78fdddcd25644182330eed2
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Setup soldr
+        uses: ./.github/actions/soldr
+        with:
+          ci-tests: "true"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: fmt
+        run: ./ci.sh fmt
+
+      - name: clippy
+        run: ./ci.sh clippy
+
+      - name: Build + capture compiler-artifact JSON
+        run: python3 ci/fast.py build-json --out ${{ runner.temp }}/cargo-messages.jsonl
+
+      - name: ci_lint units (compile-unit discipline, RUST-011/RUST-012)
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 -m ci_lint units --repo . --artifacts ${{ runner.temp }}/cargo-messages.jsonl
+
+      - name: ci_lint tests size (test-binary budget, RUST-012)
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 -m ci_lint tests size --repo . --artifacts ${{ runner.temp }}/cargo-messages.jsonl
+
+      - name: Run Rust tests
+        run: python3 ci/fast.py rust-test
+
+      - name: Run Python tests
+        run: python3 ci/fast.py python-test
+
+      - name: Build wheel (Soldr PEP 517 backend via uv build)
+        id: wheel-build
+        run: python3 ci/fast.py wheel-build --out dist/fast-lane
+
+      - name: ci_lint wheel check (PKG-003/004/005, static)
+        env:
+          PYTHONPATH: .ci-lint
+          WHEEL_PATH: ${{ steps.wheel-build.outputs.wheel-path }}
+        run: python3 -m ci_lint wheel check --repo . --wheel "$WHEEL_PATH"
+
+      - name: Clean-venv wheel install
+        run: python3 ci/fast.py wheel-install --wheel-dir dist/fast-lane --venv .venv-smoke --python 3.11
+
+      - name: ci_lint wheel installed (PKG-001/003/005, from the artifact)
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 -m ci_lint wheel installed --repo . --venv .venv-smoke
+
+  dylint:
+    name: dylint (all declared targets)
+    needs: precheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup soldr (Dylint mode)
+        uses: ./.github/actions/soldr
+        with:
+          dylint: "true"
+          # This workspace's auto-mapped nightly (from its stable 1.95.0
+          # channel) has no catalogued Dylint driver asset; nightly-2026-05-28
+          # does (zackees/clud's working _dylint.yml pattern). Must equal
+          # dylints/platform_boundary/rust-toolchain.toml's channel exactly.
+          dylint-toolchain: "nightly-2026-05-28"
+          prebuild-deps: "none"
+          verify-compile-cache: "warn"
+          cache-key-suffix: "dylint"
+
+      - name: Dylint -- host + every declared cross target
+        run: python3 ci/dylint.py --shape sequential --results-out ${{ runner.temp }}/dylint-results.json
+
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [precheck, fast, dylint]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: b1528416e7e8d14df78fdddcd25644182330eed2
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Gate
+        env:
+          PYTHONPATH: .ci-lint
+          CI_OK_PLAN_JSON: ${{ needs.precheck.outputs.plan }}
+          CI_OK_NEEDS_JSON: ${{ toJSON(needs) }}
+        run: python3 ci/ci_ok.py

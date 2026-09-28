@@ -48,25 +48,27 @@ in both directions.
 
 ## CI status on this branch
 
-`zackees/ci.yml#6` round 1 restructured the crate/package layout (this
-change) and removed the old `.github/workflows/ci.yml` (it queued a
-retired `macos-13` runner for 24h on every run — see the PR body). This
-branch has **no CI workflow** until a later round adds
-`.github/workflows/ci.yml` + `ci-precheck.yml` shaped by `ci.toml`
-(checked in at the repo root — see below). Run `./ci.sh all` locally in
-the meantime; it is the same gate set a future workflow will call.
+`zackees/ci.yml#6` round 2 added the two workflows round 1 deferred:
+`.github/workflows/ci-precheck.yml` (`workflow_call`, ≤ 30 s, no tool
+installs — precheck's own gate group 2 rules) and
+`.github/workflows/ci.yml` (the only entrypoint: `pull_request`,
+`push: main`, `schedule`, `workflow_dispatch`). Jobs: `precheck` →
+`fast` (linux-x64 build/unit/wheel smoke) + `dylint` (one Linux job, host
++ every declared cross target) → `ci-ok` (the one required check,
+`if: always()`, calls `ci_lint gate`). `./ci.sh all` still runs locally
+and is what an agent should run before pushing — see "Commands" below for
+the exact local precheck command.
 
 ## `ci.toml`
 
-The repo's CI contract, checked (not yet enforced — `ci-lint` is being
-built in parallel in `zackees/ci.yml`) by `ci-lint`. It declares the
-six supported platforms, the Rust workspace's public/private crate
-split and test-binary budget, the Python packaging shape (soldr
-backend, `abi3-py310`, `bundle-bins`), suites, flows, tags, and cache
-families. It does not generate YAML — it bounds what a future workflow
-may do and how it plans each run. `ci.toml`'s `linter` field pins the
-exact `ci-lint` commit a future precheck job will check out; it is a
-placeholder until that job exists.
+The repo's CI contract, checked by `ci-lint` (`zackees/ci.yml`, pinned by
+commit SHA — see `ci.toml`'s `linter` field, which MUST match the SHA
+`.github/workflows/ci-precheck.yml` and `ci.yml` check out into
+`.ci-lint`, rule `CT-004`). It declares the six supported platforms, the
+Rust workspace's public/private crate split and test-binary budget, the
+Python packaging shape (soldr backend, `abi3-py310`, `bundle-bins`),
+suites, flows, tags, and cache families. It does not generate YAML — it
+bounds what the workflow may do and how it plans each run.
 
 ## Commands
 
@@ -78,6 +80,24 @@ placeholder until that job exists.
 ./test                    # soldr cargo test + uv sync (soldr backend) + pytest
 ./lint                    # convenience: fmt + clippy + ruff
 ```
+
+## CI
+
+Run this before every push that touches a workflow, `ci.toml`, `Cargo.toml`,
+`pyproject.toml`, `bosn.toml`, or `dylints/**` (it is also the agent
+Stop-hook / pre-push gate — zackees/ci.yml#6 §11):
+
+```bash
+PYTHONPATH=<ci.yml checkout> uv run --no-project --with pyyaml python3 -m ci_lint precheck --repo . --local
+```
+
+The `dylint` job's own logic lives in `ci/dylint.py` (host + every
+declared cross target, one Linux job — `soldr dylint prepare --target T`
+then `soldr cargo dylint`, never a bare `cargo`/`cargo-dylint` call). The
+`fast` job's logic lives in `ci/fast.py`. `.github/actions/soldr/` is the
+ONLY `zackees/setup-soldr` call site (`ci.toml`'s
+`[allow] setup-soldr.only-in`) — see its README before adding a lane that
+needs a new setup-soldr input.
 
 For the full design rationale see
 [zackees/zccache#835](https://github.com/zackees/zccache/issues/835)
