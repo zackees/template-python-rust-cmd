@@ -121,7 +121,11 @@ runs:
   steps:
     - name: setup-soldr
       id: setup
-      uses: zackees/setup-soldr@4df8db93438594f50505574d9dc8117505d33362 # v0.9.80
+      # VALIDATION ONLY (round 2D, setup-soldr#538): pinned to
+      # zackees/setup-soldr PR #539 head SHA (fix/dylint-success-marker-identity)
+      # to prove the dylint-cache/dylint-output-cache save fix end-to-end.
+      # Revert to the released SHA before merging this branch anywhere.
+      uses: zackees/setup-soldr@07ff91d63ebbca859c544894ce36ab8d03b3a717 # PR #539 validation
       with:
         version: "0.9.25" # matches pyproject.toml's `requires = ["soldr==0.9.25"]` (the PEP 517 backend pin)
         toolchain-file: "rust-toolchain.toml"
