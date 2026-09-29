@@ -27,7 +27,7 @@ and packaging shape come from
 CI is declared, not scripted. The checked-in [`ci.toml`](./ci.toml)
 (schema 3, profile `rust-pypi-app`) is the contract: platforms, crates,
 suites, flows, tags and cache families. It does not generate YAML; it
-bounds what `.github/workflows/ci.yml` (+ `ci-precheck.yml`, the only two
+bounds what `.github/workflows/ci.yml` (+ `ci-pre.yml`, the only two
 workflow files) may do and decides what each run selects.
 
 - **ci-lint precheck.** Every run starts with `ci-lint precheck` from

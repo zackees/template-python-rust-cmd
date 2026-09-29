@@ -35,7 +35,7 @@ action's own `inputs:`, so a caller cannot override them even by accident.
   `RUST-013`): it floats on `setup-soldr`'s own latest-release resolution,
   matching `pyproject.toml`'s floor-only `requires = ["soldr>=0.9.25"]` —
   the PEP 517 backend's own requirement — so the CLI used by
-  `./ci.sh`/CI steps and the backend used by `uv build`/`uv sync` always
+  `./ci.py`/CI steps and the backend used by `uv build`/`uv sync` always
   resolve to the same current Soldr release, without a stale exact pin
   in either place.
 

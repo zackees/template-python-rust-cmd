@@ -15,7 +15,7 @@ bytes run on a developer laptop.
 │   └── soldr/           # the ONLY `zackees/setup-soldr` call site
 ├── workflows/
 │   ├── ci.yml            # the only entrypoint
-│   ├── ci-precheck.yml   # workflow_call, gates ci.yml
+│   ├── ci-pre.yml   # workflow_call, gates ci.yml
 │   └── README.md
 └── README.md             # this file
 ```
@@ -28,7 +28,7 @@ matrix with bare `cargo`/`maturin` calls, no `setup-soldr`, and a retired
 `macos-13` runner that queued 24h on every run — 0 of 27 historical runs
 ever succeeded). Round 2 added it back, this time generated to match
 `ci.toml`'s `[platforms]`/`[suites]`/`[flow.*]` declarations and gated by
-`ci-precheck.yml` (`workflow_call` only, ≤ 30 s, no tool installs). See
+`ci-pre.yml` (`workflow_call` only, ≤ 30 s, no tool installs). See
 `.github/workflows/README.md` for the job graph and step-shape rules.
 
 - `ci.toml` at the repo root is the exact platform/suite/tag/cache
@@ -37,7 +37,7 @@ ever succeeded). Round 2 added it back, this time generated to match
 - `./ci.py all` locally runs the same gate set the `fast` job's fmt/
   clippy steps call.
 - `python3 -m ci_lint precheck --repo . --local` is the same check
-  `ci-precheck.yml` runs, and this repo's agent Stop-hook / pre-push gate.
+  `ci-pre.yml` runs, and this repo's agent Stop-hook / pre-push gate.
 
 ## The composite action
 

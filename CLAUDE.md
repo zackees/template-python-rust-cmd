@@ -49,7 +49,7 @@ in both directions.
 ## CI status on this branch
 
 `zackees/ci.yml#6` round 2 added the two workflows round 1 deferred:
-`.github/workflows/ci-precheck.yml` (`workflow_call`, ≤ 30 s, no tool
+`.github/workflows/ci-pre.yml` (`workflow_call`, ≤ 30 s, no tool
 installs — precheck's own gate group 2 rules) and
 `.github/workflows/ci.yml` (the only entrypoint: `pull_request`,
 `push: main`, `schedule`, `workflow_dispatch`). Round 3 added tag-selected
@@ -71,7 +71,7 @@ below for the exact local precheck command.
 
 The repo's CI contract, checked by `ci-lint` (`zackees/ci.yml`, pinned by
 commit SHA — see `ci.toml`'s `linter` field, which MUST match the SHA
-`.github/workflows/ci-precheck.yml` and `ci.yml` check out into
+`.github/workflows/ci-pre.yml` and `ci.yml` check out into
 `.ci-lint`, rule `CT-004`). It declares the six supported platforms, the
 Rust workspace's public/private crate split and test-binary budget, the
 Python packaging shape (soldr backend, `abi3-py310`, `bundle-bins`),

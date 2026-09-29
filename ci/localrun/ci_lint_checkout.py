@@ -2,7 +2,7 @@
 
 `ci.toml`'s `linter` field (`zackees/ci.yml@<sha>`) is the single source
 of truth for which `ci_lint` commit precheck runs -- the same pin
-`.github/workflows/ci-precheck.yml` and `ci.yml` check out in CI
+`.github/workflows/ci-pre.yml` and `ci.yml` check out in CI
 (`CT-004`). Locally we keep one gitignored checkout at `.ci-lint/` (the
 same directory CI would produce if it ran here) and fast-path to a no-op
 when it is already at the pinned commit, so a warm `precheck` run pays no

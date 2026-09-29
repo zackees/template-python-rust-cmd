@@ -86,6 +86,17 @@ inputs:
       compile) when they must not share one key.
     required: false
     default: ""
+  cache-key-pr:
+    description: >-
+      The precheck plan's `cache_key_pr` output (`pr-<N>` on a
+      pull_request run, empty elsewhere; zackees/ci.yml#23 §5,
+      CACHE-013). Appended to `cache-key-suffix` ONLY when this step
+      actually saves (`save-cache == 'true'`), so a PR-context save (a
+      `ci-cache-save`-tagged PR) is keyed to its PR and the cache-janitor
+      deletes it once the PR closes -- while an ordinary PR run (which
+      never saves) keeps restoring main's un-suffixed entries warm.
+    required: false
+    default: ""
   save-cache:
     description: >-
       Forwarded to setup-soldr's own save-cache (round-4B; ci.toml
@@ -232,4 +243,4 @@ runs:
         prebuild-deps-flags: ${{ inputs.prebuild-deps-flags }}
         verify-compile-cache: ${{ inputs.verify-compile-cache }}
         compile-cache-stats: ${{ inputs.compile-cache-stats }}
-        cache-key-suffix: ${{ inputs.cache-key-suffix }}
+        cache-key-suffix: ${{ inputs.save-cache == 'true' && inputs.cache-key-pr != '' && (inputs.cache-key-suffix != '' && format('{0}-{1}', inputs.cache-key-suffix, inputs.cache-key-pr) || inputs.cache-key-pr) || inputs.cache-key-suffix }}

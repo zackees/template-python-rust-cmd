@@ -1,7 +1,7 @@
-name: ci-precheck
+name: ci-pre
 
 # zackees/ci.yml#6 §2. Called ONLY by ci.yml's `precheck` job
-# (`uses: ./.github/workflows/ci-precheck.yml`) -- never a standalone
+# (`uses: ./.github/workflows/ci-pre.yml`) -- never a standalone
 # entrypoint (`GEN-001`/`GEN-008`: one PR entrypoint). Installs nothing:
 # `ubuntu-24.04` ships system python3 3.12 and yq 4.53.6; ci_lint parses
 # YAML with PyYAML if importable, else `yq -o=json`, per zackees/ci.yml#6
@@ -123,21 +123,30 @@ on:
           `[allow].setup-soldr.require`/`[allow].setup-uv.require`'s
           `"plan"` value (`CACHE-009`/`CACHE-003`).
         value: ${{ jobs.precheck.outputs.cache_save }}
+      cache_key_pr:
+        description: >-
+          "pr-<N>" on a pull_request run, "" elsewhere (zackees/ci.yml#23
+          §5, CACHE-013) -- from `ci_lint plan --github-output`. Embedded
+          into every PR-context cache key (setup-soldr wrapper's
+          `cache-key-pr`, setup-uv `cache-suffix`) so `cache-janitor`
+          deletes a PR's entries once it closes.
+        value: ${{ jobs.precheck.outputs.cache_key_pr }}
 
 permissions:
   contents: read
   actions: read
 
-# WF-002 requires this on every workflow file, including a `workflow_call`
-# reusable one. Mirrors ci.yml's own grouping so a re-triggered precheck
-# for the same ref/PR doesn't pile up either, independent of the caller.
-concurrency:
-  group: ci-precheck-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+# No workflow-level `concurrency:` (zackees/ci.yml#23 §3, GEN-015): a
+# workflow-level cancel group would cancel a `cache-janitor` sweep
+# mid-delete. Concurrency here is per job -- only `cache-janitor` takes a
+# lock (GEN-016/017); the caller `ci.yml` keeps its own per-ref group.
 
 jobs:
   precheck:
     name: precheck
+    # A `pull_request: closed` run exists only for `cache-janitor` below
+    # (delete the closed PR's caches); nothing gets checked or planned.
+    if: github.event.action != 'closed'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -163,6 +172,7 @@ jobs:
       is-release: ${{ steps.release-profile.outputs.is-release }}
       profile: ${{ steps.release-profile.outputs.profile }}
       cache_save: ${{ steps.plan.outputs.cache_save }}
+      cache_key_pr: ${{ steps.plan.outputs.cache_key_pr }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -170,14 +180,14 @@ jobs:
       # Skipped under act -- see ci.yml's `fast` job's identical step
       # (ci.yml#6 round-4B act parity) for why: act runs THIS job too
       # (it resolves `ci.yml`'s `precheck: uses: ./.github/workflows/
-      # ci-precheck.yml` job before running `fast`, so this file's own
+      # ci-pre.yml` job before running `fast`, so this file's own
       # cross-repo checkout hit the same act limitation).
       - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
         if: env.ACT != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 
@@ -226,10 +236,84 @@ jobs:
       # attempt outright avoids a noisy, guaranteed-401 API call on every
       # fork PR push). Deletes CACHE-008 entries only (closed/merged-PR
       # deltas + stale-base deltas), capped at 20/run so precheck stays
-      # fast; the nightly janitor (cache-maint, schedule) picks up the rest.
+      # fast; the `cache-janitor` job below (every push/schedule/dispatch/PR close) picks up the rest.
       - name: Trim stale PR compile-delta cache entries
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
           PYTHONPATH: .ci-lint
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 -m ci_lint cache trim --repo . --max-deletes 20
+
+  # zackees/ci.yml#23 §3/§4: the cache janitor runs on EVERY push, schedule,
+  # dispatch, and `pull_request: closed` (ci.yml's trigger list) -- never on
+  # an open PR's own pushes. One repo-wide, non-cancelling lock (GEN-017) so
+  # two sweeps never race and a sweep is never cancelled mid-delete; no
+  # other job takes a lock or `needs:` this one (GEN-016), so a queued
+  # sweep never delays a check. Deletes: every entry of a closed/merged PR
+  # (`pr-<N>` key component or `refs/pull/<N>/merge`), CACHE-001/003/005/
+  # 006/009 entries (superseded generations, retired families such as
+  # `setup-soldr-dylint-output-v1`), and stale entries -- never an entry
+  # younger than ci-lint's 10-minute grace, never the newest base entry a
+  # required job restores. Prints a before/after table.
+  cache-janitor:
+    name: cache-janitor
+    if: github.event_name != 'pull_request' || github.event.action == 'closed'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: cache-janitor
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Skipped under act -- see the precheck job's identical step.
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        if: env.ACT != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Janitor (closed PRs, superseded/retired/undeclared, stale)
+        env:
+          PYTHONPATH: .ci-lint
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -m ci_lint cache janitor --repo . --max-deletes 100
+
+  # zackees/ci.yml#23 §6: the budget verdict, independent of the janitor
+  # (no lock, no `needs:`). Hard failure over `[cache].budget` on main
+  # push/schedule/dispatch; warn-only on a PR unless the PR's own
+  # `pr-<N>` entries caused the breach.
+  cache-budget:
+    name: cache-budget
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Skipped under act -- see the precheck job's identical step.
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        if: env.ACT != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Cache budget verdict
+        env:
+          PYTHONPATH: .ci-lint
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -m ci_lint cache budget --repo .
