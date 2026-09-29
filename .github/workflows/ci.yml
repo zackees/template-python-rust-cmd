@@ -760,7 +760,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 
