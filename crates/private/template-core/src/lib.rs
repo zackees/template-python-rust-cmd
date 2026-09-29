@@ -19,7 +19,7 @@ pub(crate) use template_platform as platform;
 /// host's OS name, sourced entirely through [`platform::host`].
 pub fn version_banner() -> String {
     format!(
-        "template-core {} ({})",
+        "template-core v{} on {}",
         env!("CARGO_PKG_VERSION"),
         platform::host::os_name(),
     )
