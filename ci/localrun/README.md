@@ -68,6 +68,24 @@ Two independent gotchas this module handles:
   instead, so it can never be fooled by a stale or synthetic index
   record -- only the retired-family *key* check reads the index.
 
+## Resolved: `dylint` lane green under act (zackees/ci.yml#47)
+
+As of round M2-24, `python3 ci/local.py act --lanes dylint` passes end
+to end -- see `ci/docker/act/README.md`'s "What a local run actually
+exercises today" for the evidence table and the three defects fixed to
+get there (a linked-git-worktree job-container mount gap in
+`act_orchestrate.py`/`act_inner.py`, the `cache-budget` job missing its
+`env.ACT != 'true'` skip in `.github/workflows/ci-pre.yml`, and a
+shared-host anonymous GitHub-API rate-limit fragility in
+`zackees/setup-soldr`'s release-tag resolution, which is an environment
+condition, not a code defect here). The "GITHUB_TOKEN and cross-repo
+checkouts" section below (the `.ci-lint` cross-repo checkout gap) was
+resolved separately, in an earlier round, by the machine-scoped
+`bosn.toml` `ci-lint` volume `ensure_ci_lint`/`act_inner.py` populate
+directly instead of relying on `actions/checkout`'s `repository:`
+override under act; the text is kept for its still-accurate root-cause
+explanation and the `.secrets` opt-in it documents.
+
 ## GITHUB_TOKEN and cross-repo checkouts (known gap, with a working opt-in)
 
 `ci.yml`'s `Checkout ci-lint (zackees/ci.yml, pinned)` step uses

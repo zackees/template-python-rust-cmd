@@ -89,9 +89,30 @@ def _ensure_runner_image(tag: str) -> float:
 
 
 def _run_lane(
-    lane: str, *, event_path: Path, runner_tag: str, run_id: str
+    lane: str,
+    *,
+    event_path: Path,
+    runner_tag: str,
+    run_id: str,
+    extra_git_mount: str | None,
 ) -> tuple[float, int]:
     ARTIFACT_SERVER.mkdir(parents=True, exist_ok=True)
+    container_options = f"--init --label template.act-run={run_id} -v {CI_LINT_VOLUME_NAME}:/work/.ci-lint"
+    if extra_git_mount:
+        # zackees/ci.yml#47: `act`'s own Checkout step is a plain `docker
+        # cp` of `/work` into each job container, not a real clone -- a
+        # linked git worktree's `.git` FILE ("gitdir: <absolute path
+        # under the main checkout>") gets copied verbatim, but the path
+        # it points at lives outside `/work` and was never mounted, so
+        # every `git` command (including `ci_lint`'s tracked-file scan)
+        # fails inside the job container. The host-side orchestrator
+        # (act_orchestrate.py's `_detect_external_git_common_dir`)
+        # detects this and passes the main checkout's absolute root
+        # here; bind-mounting it BY IDENTITY (same path, same path)
+        # makes the worktree's absolute gitdir reference resolve inside
+        # the job container exactly as it does on the host. A no-op for
+        # an ordinary (non-worktree) checkout, where this is None.
+        container_options += f" -v {extra_git_mount}:{extra_git_mount}"
     cmd = [
         "act",
         "pull_request",
@@ -116,8 +137,8 @@ def _run_lane(
         # (not path -- see CI_LINT_VOLUME_MOUNT's comment) at exactly the
         # path `ci.toml`'s `linter`-pinned checkout normally lands at, so
         # every `PYTHONPATH: .ci-lint`-relative `run:` step works
-        # unchanged under act.
-        f"--init --label template.act-run={run_id} -v {CI_LINT_VOLUME_NAME}:/work/.ci-lint",
+        # unchanged under act. See above for the optional extra mount.
+        container_options,
     ]
     # No --secret-file override: act's own default (".secrets" in this
     # process's cwd, i.e. /work/.secrets) applies. Anonymous by default --
@@ -151,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     event_path = WORK / request["event_path"]
     run_id: str = request["run_id"]
     runner_tag: str = request["runner_tag"]
+    extra_git_mount: str | None = request.get("extra_git_mount")
 
     result: dict[str, object] = {
         "ok": True,
@@ -187,7 +209,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         for lane in lanes:
             seconds, exit_code = _run_lane(
-                lane, event_path=event_path, runner_tag=runner_tag, run_id=run_id
+                lane,
+                event_path=event_path,
+                runner_tag=runner_tag,
+                run_id=run_id,
+                extra_git_mount=extra_git_mount,
             )
             succeeded = exit_code == 0
             result["lanes"].append(
