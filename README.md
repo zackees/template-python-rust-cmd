@@ -22,15 +22,37 @@ The gates/hooks/entry-point design rationale lives in
 and packaging shape come from
 [`zackees/ci.yml#6`](https://github.com/zackees/ci.yml/issues/6).
 
-## `ci.toml`
+## CI contract
 
-The repo root has a checked-in `ci.toml` — the CI contract a future
-`ci-lint` precheck will validate this repo against. It declares the
-six platforms this template claims to support, the Rust workspace's
-public/private crate split and declared test binaries, the Python
-packaging shape, suites, flows, tags, and cache families. **It does
-not generate YAML**, and as of this branch there is no
-`.github/workflows/ci.yml` reading it yet — see "CI status" below.
+CI is declared, not scripted. The checked-in [`ci.toml`](./ci.toml)
+(schema 3, profile `rust-pypi-app`) is the contract: platforms, crates,
+suites, flows, tags and cache families. It does not generate YAML; it
+bounds what `.github/workflows/ci.yml` (+ `ci-precheck.yml`, the only two
+workflow files) may do and decides what each run selects.
+
+- **ci-lint precheck.** Every run starts with `ci-lint precheck` from
+  [`zackees/ci.yml`](https://github.com/zackees/ci.yml), checked out at the
+  exact commit pinned by `ci.toml`'s `linter` field (every workflow
+  checkout of `zackees/ci.yml` uses the same SHA). It validates `ci.toml`
+  and the workflows against fleet policy, then emits the run plan. The
+  required check is the `CI OK` aggregator.
+- **Tags.** Put a tag in the PR title (or commit subject) to change the
+  selection on top of the flow (`pr`: `linux-x64`, `unit` + `smoke`):
+
+  | Tag | Effect |
+  |---|---|
+  | `[ci-<platform>]`, e.g. `[ci-windows-arm64]` | add one platform lane |
+  | `[ci-linux]` / `[ci-windows]` / `[ci-macos]` | add a platform group |
+  | `[ci-full]` | all platforms + the `integration` suite |
+  | `[ci-perf]` | add the non-gating `perf` suite |
+  | `[ci-cache-save]` | allow a capped PR-scoped base cache save |
+  | `[no-test]` | drop test suites (the PR is then not mergeable) |
+  | `[release]` | release flow as a publish rehearsal |
+
+- **Local loop.** `python3 ci/local.py precheck` runs the same precheck in
+  seconds (the pre-push / agent Stop-hook gate);
+  `python3 ci/local.py act` then runs the `fast` + `dylint` lanes locally
+  through bosn -> act (`--lanes fast`, `--title "[ci-full] ..."`).
 
 ## Repo Layout
 
@@ -70,17 +92,6 @@ not generate YAML**, and as of this branch there is no
     ├── ARCHITECTURE.md
     └── RELEASE.md
 ```
-
-## CI status on this branch
-
-`zackees/ci.yml#6` round 1 (this change) restructured the crate/package
-layout and deleted the previous `.github/workflows/ci.yml` — it queued
-a retired `macos-13` runner for 24h on every run and never passed (0 of
-27 historical runs succeeded). **There is no CI workflow on this branch
-right now.** A later round adds `.github/workflows/ci.yml` +
-`ci-precheck.yml`, planned by `ci.toml` and checked by `ci-lint`. Until
-then, `./ci.sh all` is the local equivalent of what that workflow will
-run.
 
 ## Development Flow
 
