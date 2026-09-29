@@ -22,8 +22,10 @@ action's own `inputs:`, so a caller cannot override them even by accident.
 
 ## Pinning
 
-- `zackees/setup-soldr@c80a18293a90a67db318fc8dedde8fb4342d7fb5` (`v0.9.83`,
-  the newest tagged release as of 2026-09-29 -- adds `dylint-targets`,
+- `zackees/setup-soldr@aa75de0e55ed9751cdee04bf5200c46fe8d59851` (`v0.9.84`,
+  the newest tagged release as of 2026-09-29 -- setup-soldr#545: the
+  build-cache tiny-delta-skip save gate counts new compiles across every
+  job session, not just the last; on top of v0.9.83, which adds `dylint-targets`,
   ci.yml#9: setup-soldr itself now prepares rust-std for every declared
   cross target and keys the Dylint foundation/output cache on the full
   target set, which is why `ci/dylint.py` no longer runs `soldr dylint
