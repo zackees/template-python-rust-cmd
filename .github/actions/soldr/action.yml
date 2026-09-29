@@ -41,6 +41,16 @@ inputs:
       "0 hit" cook-cache warning for zero benefit.
     required: false
     default: "soldr-cook"
+  dylint-targets:
+    description: >-
+      Forwarded to setup-soldr's `dylint-targets` (setup-soldr v0.9.83+,
+      ci.yml#9). Comma-separated cross target triples for cross-platform
+      Dylint check-only passes, in addition to the host. setup-soldr
+      prepares rust-std for each target and folds the target set into the
+      Dylint foundation/output cache identity, so `ci/dylint.py` no longer
+      has to call `soldr dylint prepare --target` itself.
+    required: false
+    default: ""
   cross-target:
     description: >-
       One cross-compile target triple, forwarded to setup-soldr's
@@ -186,7 +196,7 @@ runs:
   steps:
     - name: setup-soldr
       id: setup
-      uses: zackees/setup-soldr@a07bab94f16124b5c6857b137a237a53a61e06d1 # v0.9.82
+      uses: zackees/setup-soldr@c80a18293a90a67db318fc8dedde8fb4342d7fb5 # v0.9.83
       with:
         # No `version:` input (zackees/ci.yml#18, RUST-013): float on
         # setup-soldr's own latest-release resolution, matching pyproject.toml's
@@ -239,6 +249,7 @@ runs:
         dylint-toolchain: ${{ inputs.dylint-toolchain }}
         prebuild-deps: ${{ inputs.prebuild-deps }}
         cross-targets: ${{ inputs.cross-target }}
+        dylint-targets: ${{ inputs.dylint-targets }}
         ci-tests: ${{ inputs.ci-tests }}
         prebuild-deps-flags: ${{ inputs.prebuild-deps-flags }}
         verify-compile-cache: ${{ inputs.verify-compile-cache }}

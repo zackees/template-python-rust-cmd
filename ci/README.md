@@ -60,7 +60,13 @@ step (CLAUDE.md rule 6):
   planner narrows to the flow's *build* platform selection — wrong for
   Dylint, which always covers every declared platform; see the module
   docstring). Supports both `--shape sequential` and `--shape
-  multi-target` for the D6 invocation-shape measurement.
+  multi-target` for the D6 invocation-shape measurement. `--print-cross-targets`
+  is a second mode the workflow step uses to resolve the Setup-soldr
+  `dylint-targets` input before the check pass runs (ci.yml#9,
+  setup-soldr v0.9.83+): setup-soldr now prepares rust-std for every
+  declared cross target and keys the Dylint foundation/output cache on
+  the full target set itself, so this script no longer runs `soldr
+  dylint prepare --target` in a loop.
 - **`ci_ok.py`** — the `ci-ok` job's one line. Receives the precheck
   job's `plan`/`reuse_json` outputs, `toJSON(needs)`, and
   `toJSON(github.event)` through `env:` (never interpolated into a
