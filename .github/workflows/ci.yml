@@ -741,7 +741,13 @@ jobs:
       matrix:
         lane:
           - { id: linux-x64-musl, target: x86_64-unknown-linux-musl, runs_on: ubuntu-24.04 }
-          - { id: linux-arm64-musl, target: aarch64-unknown-linux-musl, runs_on: ubuntu-24.04-arm }
+          # Both legs build on the x86_64 host: soldr-toolchain's musl
+          # bundles are hosted on x86_64-unknown-linux-gnu only (the
+          # bundle slug names the TARGET shape, not the host shape --
+          # confirmed live, run 36520084037/job 109250897165: "the
+          # catalogue musl/Linux toolchain cannot run on this host ...
+          # every bundle is hosted on x86_64-unknown-linux-gnu", soldr#3296).
+          - { id: linux-arm64-musl, target: aarch64-unknown-linux-musl, runs_on: ubuntu-24.04 }
     env:
       CARGO_INCREMENTAL: "0"
     steps:
