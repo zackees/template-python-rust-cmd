@@ -419,9 +419,16 @@ def cmd_mock_publish(args: argparse.Namespace) -> int:
     if not dist_dir.is_dir():
         print(f"ci/release.py: --dist {dist_dir} is not a directory", file=sys.stderr)
         return 1
-    staged = [p for p in sorted(dist_dir.iterdir()) if p.suffix == ".whl" or p.name.endswith(".tar.gz")]
+    staged = [
+        p
+        for p in sorted(dist_dir.iterdir())
+        if p.suffix == ".whl" or p.name.endswith(".tar.gz")
+    ]
     if not staged:
-        print(f"ci/release.py: mock-publish: no wheel/sdist found in {dist_dir}", file=sys.stderr)
+        print(
+            f"ci/release.py: mock-publish: no wheel/sdist found in {dist_dir}",
+            file=sys.stderr,
+        )
         return 1
     for artifact in staged:
         dest = registry_dir / artifact.name
@@ -438,7 +445,11 @@ def cmd_mock_readback(args: argparse.Namespace) -> int:
     if not dist_dir.is_dir():
         print(f"ci/release.py: --dist {dist_dir} is not a directory", file=sys.stderr)
         return 1
-    staged = [p for p in sorted(dist_dir.iterdir()) if p.suffix == ".whl" or p.name.endswith(".tar.gz")]
+    staged = [
+        p
+        for p in sorted(dist_dir.iterdir())
+        if p.suffix == ".whl" or p.name.endswith(".tar.gz")
+    ]
     rc = 0
     for artifact in staged:
         registry_copy = registry_dir / artifact.name
@@ -456,10 +467,14 @@ def cmd_mock_readback(args: argparse.Namespace) -> int:
         sha256 = _sha256_file(registry_copy)
         record_path = out_dir / f"{artifact.name}.json"
         record_path.write_text(
-            json.dumps({"path": artifact.name, "sha256": sha256, "read_back": True}, indent=2),
+            json.dumps(
+                {"path": artifact.name, "sha256": sha256, "read_back": True}, indent=2
+            ),
             encoding="utf-8",
         )
-        print(f"mock-readback: read {artifact.name} back from {registry_copy} -> {record_path}")
+        print(
+            f"mock-readback: read {artifact.name} back from {registry_copy} -> {record_path}"
+        )
     return rc
 
 
