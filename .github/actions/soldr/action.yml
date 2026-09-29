@@ -114,8 +114,34 @@ inputs:
       too); leave at the default "true" for every other caller.
     required: false
     default: "true"
+  preserve-source-mtimes:
+    description: >-
+      Forwarded to setup-soldr's own experimental `preserve-source-mtimes`
+      input (round-4C, ci.yml#6 §6 D3: "every workspace crate re-checks
+      after a restore because checkout mtimes are newer than restored
+      artifacts"). Snapshots each tracked Rust source file's (mtime, size,
+      content-hash) at cold-save time and replays the mtime on warm ONLY
+      when the current content is byte-identical -- a genuinely edited
+      file's mtime is left alone, so it still recompiles correctly. Set
+      "true" only where round-4C's measurement showed it correct (the
+      edited crate still rechecks) AND faster; default "false" everywhere
+      else.
+    required: false
+    default: "false"
 
 outputs:
+  build-cache-key:
+    description: >-
+      Primary key setup-soldr used for its own zccache compilation-cache
+      restore attempt this run (round-4C: the PR compile-delta wrapper's
+      `--base-key`/self-heal identity -- issue #6 §6 "A delta whose
+      b<hash> doesn't match the restored base is discarded").
+    value: ${{ steps.setup.outputs.build-cache-key }}
+  build-cache-path:
+    description: >-
+      Soldr-owned zccache compilation-cache directory on disk (round-4C:
+      the PR compile-delta wrapper's manifest/pack/apply target).
+    value: ${{ steps.setup.outputs.build-cache-path }}
   cache-policy-json:
     description: setup-soldr's resolved cache-layer policy, passed through for `ci_lint cache` evidence.
     value: ${{ steps.setup.outputs.cache-policy-json }}
@@ -161,6 +187,8 @@ runs:
         # Round-4B-followup: the `init` job's own no-cache-restore
         # requirement (see this action's `cache` input doc above).
         cache: ${{ inputs.cache }}
+        # Round-4C (ci.yml#6 §6 D3): experimental source-mtime replay.
+        preserve-source-mtimes: ${{ inputs.preserve-source-mtimes }}
         # Round-4B: plan-driven, not the fixed "auto" this used before.
         # setup-soldr's own "auto" saves on every non-pull_request event,
         # which is WRONG for `workflow_dispatch` (the release flow, never

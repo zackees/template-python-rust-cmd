@@ -47,8 +47,13 @@ jobs:
       # title-edit reuse lookup (GET .../actions/runs, GET
       # .../actions/runs/{id}/jobs). Free as of round-4B (zackees/ci.yml
       # @31369f5): `actions: read` no longer needs a ci.toml
-      # `[[exceptions]]` entry, top-level or per-job.
-      actions: read
+      # `[[exceptions]]` entry, top-level or per-job. Round-4C: `write`
+      # (not `read`; `write` covers `read` for the same scope) -- passed
+      # down so ci-precheck.yml's own `precheck` job can run `ci_lint
+      # cache trim` (deletes closed/merged-PR and stale-base compile-delta
+      # entries on every same-repo PR precheck; ci.toml
+      # [allow].permissions."actions: write" = [..., "precheck"]).
+      actions: write
     with:
       pr-title: ${{ github.event.pull_request.title || '' }}
       event-name: ${{ github.event_name }}
@@ -136,14 +141,22 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+      # Round-4C: the PR compile-delta cleanup step (`ci_lint cache heal`)
+      # deletes the previous generation's cache entry right after a new
+      # one saves (ci.toml [allow].permissions."actions: write" =
+      # [..., "fast"]) -- cache entries are immutable, so this is the only
+      # way exactly one delta generation survives per PR/family/platform.
+      actions: write
     env:
       # .cargo/config.toml enables incremental for local dev; a CI job
       # must never cache incremental/ (ci.toml [cache] `never`, `RUST-006`)
       # and incremental state from one job never helps a fresh checkout.
       CARGO_INCREMENTAL: "0"
     steps:
-      - name: Checkout
+      - name: Checkout (fetch-depth 2 -- lockfile_changed.py needs HEAD^)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
 
       # Skipped under act -- see the `fast` job's identical step for why.
       - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
@@ -156,15 +169,55 @@ jobs:
           persist-credentials: false
 
       - name: Setup soldr
+        id: setup-soldr
         uses: ./.github/actions/soldr
         with:
           ci-tests: "true"
           save-cache: ${{ needs.precheck.outputs.cache_save }}
+          # Round-4C (ci.yml#6 §6 D3): measured correct + faster on this
+          # lane (see the round-4C worker report) -- see this action's own
+          # `preserve-source-mtimes` input doc for what the flag does.
+          preserve-source-mtimes: "true"
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           save-cache: ${{ needs.precheck.outputs.cache_save }}
+
+      # ── PR compile-delta cache (round-4C, ci.yml#6 §6 "PR caches: a
+      # small delta, never a base"). PR-scoped only: `main`/`nightly`
+      # write a real base through setup-soldr itself (unaffected by any
+      # of this); a PR restores that base (above) plus, here, a small
+      # delta of its OWN new compile units on top of it. Every step below
+      # is a no-op (`if:` gated or an early return) off the `pull_request`
+      # event, so a push/schedule/dispatch run behaves exactly as before.
+      - name: Did Cargo.lock/uv.lock/rust-toolchain.toml change vs the parent commit?
+        id: lockfile
+        if: github.event_name == 'pull_request'
+        run: python3 ci/lockfile_changed.py
+
+      - name: Compile-delta -- prep (base manifest + this generation's key)
+        id: delta-prep
+        if: github.event_name == 'pull_request'
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 ci/cache_delta.py prep --repo . --family compile --platform linux-x64 --pr ${{ github.event.pull_request.number }} --base-key "${{ steps.setup-soldr.outputs.build-cache-key }}" --build-cache-path "${{ steps.setup-soldr.outputs.build-cache-path }}" --archive-path ${{ runner.temp }}/compile-delta.tar.gz --manifest-path ${{ runner.temp }}/compile-delta-base-manifest.json
+
+      - name: Restore compile delta (exact key, else by -b<base8>- prefix)
+        id: restore-delta
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/cache
+        with:
+          mode: restore
+          key: ${{ steps.delta-prep.outputs.key }}
+          restore-keys: ${{ steps.delta-prep.outputs.restore-key-prefix }}
+          path: ${{ steps.delta-prep.outputs.delta-archive-path }}
+
+      - name: Compile-delta -- apply onto the restored base (before building)
+        if: github.event_name == 'pull_request' && steps.restore-delta.outputs.matched-key != ''
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 ci/cache_delta.py apply --build-cache-path "${{ steps.setup-soldr.outputs.build-cache-path }}" --delta-archive "${{ steps.delta-prep.outputs.delta-archive-path }}" --base-manifest "${{ steps.delta-prep.outputs.base-manifest-path }}"
 
       - name: fmt
         run: ./ci.sh fmt
@@ -250,6 +303,30 @@ jobs:
           PYTHONPATH: .ci-lint
         run: python3 -m ci_lint wheel installed --repo . --venv .venv-smoke
 
+      - name: Compile-delta -- pack + save-ok gate (CACHE-008)
+        id: delta-gate
+        if: github.event_name == 'pull_request'
+        env:
+          PYTHONPATH: .ci-lint
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          LOCKFILE_CHANGED: ${{ steps.lockfile.outputs.changed }}
+        run: python3 ci/cache_delta.py gate --repo . --family compile --platform linux-x64 --pr ${{ github.event.pull_request.number }} --flow pr --event pull_request --base-key "${{ steps.setup-soldr.outputs.build-cache-key }}" --build-cache-path "${{ steps.setup-soldr.outputs.build-cache-path }}" --base-manifest "${{ steps.delta-prep.outputs.base-manifest-path }}" --archive-path "${{ steps.delta-prep.outputs.delta-archive-path }}" --title "$PR_TITLE" --lockfile-changed "$LOCKFILE_CHANGED"
+
+      - name: Save compile delta (this generation)
+        if: github.event_name == 'pull_request' && steps.delta-gate.outputs.should-save == 'true'
+        uses: ./.github/actions/cache
+        with:
+          mode: save
+          key: ${{ steps.delta-prep.outputs.key }}
+          path: ${{ steps.delta-prep.outputs.delta-archive-path }}
+
+      - name: Compile-delta -- delete the previous generation (one survivor per PR)
+        if: github.event_name == 'pull_request' && steps.delta-gate.outputs.should-save == 'true'
+        env:
+          PYTHONPATH: .ci-lint
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 ci/cache_delta.py cleanup --previous-key "${{ steps.restore-delta.outputs.matched-key }}" --new-key "${{ steps.delta-prep.outputs.key }}"
+
   dylint:
     name: dylint [${{ fromJSON(needs.precheck.outputs.lane_digests_json).dylint }}]
     needs: [precheck, cache-maint]
@@ -278,6 +355,9 @@ jobs:
           verify-compile-cache: "warn"
           cache-key-suffix: "dylint"
           save-cache: ${{ needs.precheck.outputs.cache_save }}
+          # Round-4C (ci.yml#6 §6 D3): see the `fast` job's Setup soldr
+          # step for what this measured (correct + faster on this lane).
+          preserve-source-mtimes: "true"
 
       - name: Dylint -- host + every declared cross target
         run: python3 ci/dylint.py --shape multi-target --results-out ${{ runner.temp }}/dylint-results.json

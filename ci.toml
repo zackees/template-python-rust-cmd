@@ -206,7 +206,7 @@ cache  = "machine"
 # ── Allowlists ───────────────────────────────────────────────────────────────
 [allow]
 workflows         = { "ci.yml" = ["pull_request", "push:main", "schedule", "workflow_dispatch"], "ci-precheck.yml" = ["workflow_call"] }
-actions           = ["actions/checkout", "actions/upload-artifact", "actions/download-artifact", "zackees/setup-soldr", "astral-sh/setup-uv"]
+actions           = ["actions/checkout", "actions/upload-artifact", "actions/download-artifact", "actions/cache", "zackees/setup-soldr", "astral-sh/setup-uv"]
 # "plan" (round-4B): the wrapper's save-cache input must be an expression
 # derived from the precheck plan (needs.precheck.outputs.cache_save, passed
 # through as inputs.save-cache), never a literal -- saves only fire when
@@ -221,11 +221,15 @@ setup-uv          = { require = { save-cache = "plan" } }
 # contents:read + actions:read (free on every job too, no entry needed);
 # any wider per-job grant must be listed here by job id. `cache-maint`
 # (deliverable 4) needs `actions: write` (cache preprune/janitor deletes).
-# Round-5 (deliverable 3): `publish` needs `id-token: write` to mint the
-# OIDC mock-publish token -- SEC-002 additionally always requires that
-# grant be paired with `environment: pypi` on the `publish` job
-# specifically, allowlisted here or not.
-permissions       = { "actions: write" = ["cache-maint"], "id-token: write" = ["publish"] }
+# Round-4C adds two more `actions: write` grants: `precheck` (ci_lint
+# cache trim, same-repo PR events only) and `fast` (ci_lint cache heal --
+# deletes the previous PR compile-delta generation right after a new one
+# saves, so exactly one survives per PR/family/platform). Round-5
+# (deliverable 3): `publish` needs `id-token: write` to mint the OIDC
+# mock-publish token -- SEC-002 additionally always requires that grant
+# be paired with `environment: pypi` on the `publish` job specifically,
+# allowlisted here or not.
+permissions       = { "actions: write" = ["cache-maint", "precheck", "fast"], "id-token: write" = ["publish"] }
 tools             = ["soldr", "uv", "python3", "yq", "git"]
 secrets           = []
 platform-selector = "crates/private/template-platform/src/lib.rs"   # the ONE file allowed to select on host
