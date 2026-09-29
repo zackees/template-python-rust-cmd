@@ -121,7 +121,11 @@ runs:
   steps:
     - name: setup-soldr
       id: setup
-      uses: zackees/setup-soldr@c0b72703f3896ff66d4878b115365dceff3c7288 # v0.9.81
+      # VALIDATION PIN (ci.yml#1, round 2F): zackees/setup-soldr PR #541
+      # head SHA (fix/dylint-output-cache-key, fixes setup-soldr#540). This
+      # commit will be replaced with the v0.9.82 release SHA once #541
+      # merges and a patch release is cut; do not merge this pin as-is.
+      uses: zackees/setup-soldr@54c5a6002ed077801fa557e798cf27f419aa263c # PR #541 (pre-release validation)
       with:
         version: "0.9.25" # matches pyproject.toml's `requires = ["soldr==0.9.25"]` (the PEP 517 backend pin)
         toolchain-file: "rust-toolchain.toml"
