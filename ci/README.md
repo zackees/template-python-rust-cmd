@@ -51,10 +51,9 @@ step (CLAUDE.md rule 6):
   `wheel-build`, `wheel-install`. Its docstring records the round's
   decisions with evidence: Clippy stays a separate required check (not
   folded into Dylint or `soldr ci-test`'s bundled DAG), and the wheel
-  build uses `uv build --wheel` over `soldr wheel --release` because only
-  `uv build` goes through the real PEP 517 frontend (`PKG-004`) — `soldr
-  wheel` is faster locally but bypasses `pyproject.toml`'s `build-backend`
-  entirely.
+  is built with `soldr wheel` (ci.yml#17, #37), which bundles
+  `template-cli` since soldr 0.9.27 (zackees/soldr#3468). The PEP 517
+  backend stays proven by `uv sync` and `release.py sdist-smoke`.
 - **`dylint.py`** — reads target triples straight from `ci.toml`'s
   `[platforms]` (not `plan.json`'s `dylint_targets`, which round 1's
   planner narrows to the flow's *build* platform selection — wrong for
@@ -74,9 +73,8 @@ step (CLAUDE.md rule 6):
   ... --event ...`.
 - **`platform_build.py`** (round 3) — the `platform-build` matrix job's
   logic: cross-compiles one lane's declared test binaries + wheel (native
-  CLI bundled in, via the SAME Soldr PEP 517 backend `fast.py` uses, cross
-  target selected with `--config-setting target=<triple>` rather than
-  `soldr wheel --release --target` — see the module docstring for why),
+  CLI bundled in, via `soldr wheel [--release] --target <triple>` — see
+  the module docstring),
   then stages them + a `manifest.json` for `platform_run.py` to download.
   All on `ubuntu-24.04`; nothing here ever runs on the target's own OS.
 - **`platform_run.py`** (round 3) — the matching `platform-run` matrix
@@ -109,13 +107,9 @@ step (CLAUDE.md rule 6):
   artifact's own bytes, not just the filename tag — see docs/RELEASE.md
   "The glibc floor"), and `collect-wheels` (merges `platform_build.py`'s
   staged cross-platform wheels into one flat `dist/` for `release-
-  verify`). See its module docstring for a real, reproduced upstream
-  soldr/maturin limitation this module ALSO works around (separate from
-  the glibc floor): the wheel is built directly from the working tree,
-  not from the sdist (`uv build`'s sdist-then-wheel path fails --
-  maturin's sdist-trimmed workspace `Cargo.toml` drops `template-cli`, a
-  `bundle-bins` sibling with no Cargo dependency edge to the extension
-  crate).
+  verify`). `build` writes the sdist through the Soldr PEP 517 backend
+  and the wheel with `soldr wheel --release`; `sdist-smoke` builds a
+  wheel FROM that sdist and requires the bundled CLI in it (PKG-004).
 - **`musl_smoke.py`** (ci.yml#43, musllinux) — `release-musl-smoke`'s one
   line: installs the `release-musl-build`-staged musllinux wheel with
   stdlib `venv`/`pip` (no `soldr`/`uv` -- neither exists in the

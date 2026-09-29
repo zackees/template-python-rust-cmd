@@ -9,33 +9,15 @@ one line each calling `python3 ci/platform_build.py <subcommand>`
 
 Decisions this round made (see the PR body / worker report for the full
 evidence):
-  - The wheel is built through the **same** Soldr PEP 517 backend the fast
-    lane uses (`uv build --wheel`), with the cross target selected through
-    a PEP 517 config setting (`--config-setting target=<triple>`), NOT
-    `soldr wheel --release --target <alias>`. Per soldr's docs
-    (`docs/API.md` "Bundling Cargo bins into a PyO3 wheel", read via `gh
-    api repos/zackees/soldr/contents/docs/API.md`), `[tool.soldr.pep517]
-    bundle-bins` — which is how `template-cli` gets bundled into the wheel
-    at all — is documented ONLY as a PEP 517 backend feature ("After
-    maturin writes the wheel ... each entry runs `soldr build --bin`
-    ... with the backend's prepared environment"); it is never mentioned
-    under the separate `soldr wheel` (soldr#2139) subcommand, which
-    delegates straight to `soldr maturin build` and has no `bundle-bins`
-    handling of its own. `soldr wheel --release --target <alias>` would
-    therefore very likely produce a PyO3-extension-only wheel with NO
-    native CLI inside it on a cross target — silently breaking `PKG-003`
-    ("the CLI is the native binary, not a Python shim") for every
-    platform except linux-x64. Target resolution is explicitly shared
-    between "direct maturin and the PEP 517 backend, in this precedence
-    order: an explicit --target argument (including PEP 517 config
-    settings named target, --target, or build-target)", so the PEP 517
-    path can cross-build too — this keeps ONE build path (`PKG-004`'s
-    sdist-built-through-PEP-517 proof stays meaningful on every platform,
-    not just linux-x64) instead of two. Recorded as the round's `soldr
-    wheel`-vs-PEP517-cross-build decision; see the worker report for the
-    upstream doc-clarity issue this raises for soldr (should `soldr
-    wheel` also honor `[tool.soldr.pep517] bundle-bins`, or should its
-    docs say explicitly that it does not).
+  - The wheel is built with `soldr wheel [--release] --target <triple>`
+    (zackees/ci.yml#17, template-python-rust-cmd#37). Round 3 used `uv
+    build --wheel --config-setting target=<triple>` because `soldr wheel`
+    ignored `[tool.soldr.pep517] bundle-bins` and would have shipped a
+    wheel without the native CLI (PKG-003). zackees/soldr#3468 (soldr
+    0.9.27) fixed that: `soldr wheel` now stages bundle-bins through the
+    PEP 517 backend's own `_bundle_bins.py`, building each bin with
+    `soldr build --target <triple>`, the same catalogue toolchain as the
+    extension.
   - Same dev-profile choice the fast lane made (`ci/fast.py`): no
     `--release`/`profile=release` config setting, so `prebuild-deps-flags`
     stays empty and this job's `compile`/`deps` cache families share one
@@ -124,33 +106,22 @@ def cmd_build_json(args: argparse.Namespace) -> int:
 
 
 def cmd_wheel_build(args: argparse.Namespace) -> int:
-    """Cross-build the wheel through the SAME Soldr PEP 517 backend the
-    fast lane uses, targeting `args.target` via a PEP 517 config setting
-    — see the module docstring for why this is NOT `soldr wheel`.
-    `--profile release` adds the matching `profile=release` PEP 517
-    config setting (soldr's own docs: "`pip install . --config-settings
-    profile=release` selects an explicit release profile")."""
+    """Cross-build the wheel with `soldr wheel --target <triple>` (plus
+    `--release` for `--profile release`) -- see the module docstring."""
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    config_settings = ["--config-setting", f"target={args.target}"]
+    cmd = ["soldr", "wheel"]
     if args.profile == "release":
-        config_settings += ["--config-setting", "profile=release"]
-    rc = _run_isolated_soldr(
-        [
-            "uv",
-            "build",
-            "--wheel",
-            *config_settings,
-            "--out-dir",
-            str(out_dir),
-        ]
-    )
+        cmd.append("--release")
+    cmd += ["--target", args.target, "--out", str(out_dir)]
+    print(f"+ {' '.join(cmd)}", flush=True)
+    rc = subprocess.run(cmd, cwd=ROOT, check=False).returncode
     if rc != 0:
         return rc
     wheels = sorted(out_dir.glob("*.whl"))
     if not wheels:
         print(
-            f"ci/platform_build.py: uv build produced no .whl in {out_dir}",
+            f"ci/platform_build.py: soldr wheel produced no .whl in {out_dir}",
             file=sys.stderr,
         )
         return 1
