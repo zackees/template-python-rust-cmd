@@ -1,5 +1,15 @@
 """PR compile-delta cache orchestration (zackees/ci.yml#6 §6, round 4C).
 
+Probe evidence (PR #31, push 1, run 36513531709, job 109230756564):
+saved `delta-v1-pr31-compile-linux-x64-ba37ca145-gcf0a8151` (76 files,
+1,215,988 B) after a clean miss ("Cache not found for input keys:
+delta-v1-pr31-compile-linux-x64-ba37ca145-gcf0a8151,
+delta-v1-pr31-compile-linux-x64-ba37ca145-"). This second commit is push
+2 of the round's probe -- a genuinely NEW commit, not a re-run -- to
+settle whether it restores push 1's saved entry by the `-b<base8>-`
+prefix (issue #6 §6: GitHub's docs say a PR-scoped entry "can only be
+restored by re-runs of the pull request").
+
 "A small delta, never a base": on a PR push, `fast`'s compile cache is
 setup-soldr's own `main`-scope base (restored, never re-saved by a PR) plus
 a small per-PR delta this module manages -- the zccache compile units this
