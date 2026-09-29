@@ -383,6 +383,86 @@ def cmd_collect_wheels(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# mock-publish / mock-readback: zackees/ci.yml#8/#74 (REL-003) -- a
+# non-publishing dry run must exercise the mock publisher's destination
+# *read* path, not just its write path. mimalloc-pprof#562: a real
+# publisher's `GET .../releases/tags/{tag}` 404s for a draft release (only
+# the paged list endpoint includes drafts), and a dry run that only WRITES
+# never catches that class of bug.
+#
+# `mock-publish` writes each staged artifact into a throwaway "mock
+# registry" directory -- standing in for the real publisher's destination
+# (a PyPI/crates.io/GitHub Releases draft in the real pilot). `mock-
+# readback` then READS each artifact back FROM that registry directory
+# (never from the original `dist/` copy) and writes one
+# `readback/<artifact>.json` record ci-lint's own `release verify
+# --readback` (REL-003) checks -- `{"path", "sha256", "read_back": true}`,
+# with the sha256 computed from the bytes actually read back.
+# ---------------------------------------------------------------------------
+
+
+def _sha256_file(path: Path) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def cmd_mock_publish(args: argparse.Namespace) -> int:
+    dist_dir = Path(args.dist)
+    registry_dir = Path(args.registry)
+    registry_dir.mkdir(parents=True, exist_ok=True)
+    if not dist_dir.is_dir():
+        print(f"ci/release.py: --dist {dist_dir} is not a directory", file=sys.stderr)
+        return 1
+    staged = [p for p in sorted(dist_dir.iterdir()) if p.suffix == ".whl" or p.name.endswith(".tar.gz")]
+    if not staged:
+        print(f"ci/release.py: mock-publish: no wheel/sdist found in {dist_dir}", file=sys.stderr)
+        return 1
+    for artifact in staged:
+        dest = registry_dir / artifact.name
+        shutil.copy2(artifact, dest)
+        print(f"mock-publish: wrote {artifact.name} -> {dest}")
+    return 0
+
+
+def cmd_mock_readback(args: argparse.Namespace) -> int:
+    dist_dir = Path(args.dist)
+    registry_dir = Path(args.registry)
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if not dist_dir.is_dir():
+        print(f"ci/release.py: --dist {dist_dir} is not a directory", file=sys.stderr)
+        return 1
+    staged = [p for p in sorted(dist_dir.iterdir()) if p.suffix == ".whl" or p.name.endswith(".tar.gz")]
+    rc = 0
+    for artifact in staged:
+        registry_copy = registry_dir / artifact.name
+        if not registry_copy.is_file():
+            print(
+                f"ci/release.py: mock-readback: '{artifact.name}' was never written to the mock "
+                f"registry ({registry_copy}) -- the destination read path finds nothing",
+                file=sys.stderr,
+            )
+            rc = 1
+            continue
+        # The whole point: hash the bytes actually READ BACK from the mock
+        # destination, never the local dist/ copy -- a write bug that
+        # corrupts/loses bytes at the destination must show up here.
+        sha256 = _sha256_file(registry_copy)
+        record_path = out_dir / f"{artifact.name}.json"
+        record_path.write_text(
+            json.dumps({"path": artifact.name, "sha256": sha256, "read_back": True}, indent=2),
+            encoding="utf-8",
+        )
+        print(f"mock-readback: read {artifact.name} back from {registry_copy} -> {record_path}")
+    return rc
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -410,6 +490,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--wheel", required=True)
     p.add_argument("--max-glibc", required=True, help="e.g. 2.17")
     p.set_defaults(func=cmd_glibc_check)
+
+    p = sub.add_parser("mock-publish")
+    p.add_argument("--dist", required=True)
+    p.add_argument("--registry", required=True)
+    p.set_defaults(func=cmd_mock_publish)
+
+    p = sub.add_parser("mock-readback")
+    p.add_argument("--dist", required=True)
+    p.add_argument("--registry", required=True)
+    p.add_argument("--out", required=True)
+    p.set_defaults(func=cmd_mock_readback)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

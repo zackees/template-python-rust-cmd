@@ -27,6 +27,16 @@ on:
         description: Exact commit SHA the release graph runs against.
         required: true
         type: string
+      resume_from_run:
+        description: >-
+          Optional. A prior release-verify run id to resume from (REL-004,
+          zackees/ci.yml#8/#74) -- its release-manifest.json's frozen
+          sha256s are compared against this run's freshly staged bytes,
+          and any mismatch fails the resume rather than silently
+          publishing rebuilt (non-byte-reproducible) artifacts.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -873,6 +883,11 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      # actions: read -- REL-004: `gh run download` (resume_from_run) reads
+      # a PRIOR run's artifacts, which needs the `actions` scope in
+      # addition to the default `actions: write`-free token this job
+      # otherwise needs no other permission for.
+      actions: read
     steps:
       - name: Checkout exact candidate commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -910,11 +925,37 @@ jobs:
       - name: Collect cross-platform wheels into dist/
         run: python3 ci/release.py collect-wheels --staged-dir ${{ runner.temp }}/platform-staged --dist-dir dist
 
-      - name: ci_lint release verify (PKG-006)
+      # REL-003 (zackees/ci.yml#8/#74): a non-publishing dry run must
+      # exercise the mock publisher's destination *read* path, not just
+      # its write path -- mimalloc-pprof#562's draft-release 404 was a
+      # read-path bug a write-only dry run could never have caught.
+      # `mock-publish` writes every staged artifact into a throwaway
+      # registry dir; `mock-readback` then reads each one BACK from that
+      # registry (never from dist/ directly) and records the digest it
+      # actually read.
+      - name: Mock publish (dry-run write to a throwaway mock registry)
+        run: python3 ci/release.py mock-publish --dist dist --registry ${{ runner.temp }}/mock-registry
+
+      - name: Mock publish readback (proves the destination read path, REL-003)
+        run: python3 ci/release.py mock-readback --dist dist --registry ${{ runner.temp }}/mock-registry --out readback
+
+      # REL-004 (zackees/ci.yml#8/#74): when resuming from a prior
+      # release-verify run (workflow_dispatch input `resume_from_run`),
+      # download that run's release-manifest.json so `ci-lint release
+      # verify --resume` can refuse to publish rebuilt (non-reproducible)
+      # bytes -- mimalloc-pprof#564/#565.
+      - name: Download frozen manifest for resume (only if resume_from_run given)
+        if: ${{ github.event.inputs.resume_from_run != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "${{ github.event.inputs.resume_from_run }}" --repo "${{ github.repository }}" --name release-dist-verified --dir frozen
+
+      - name: ci_lint release verify (PKG-006, REL-003, REL-004)
         env:
           PYTHONPATH: .ci-lint
           RELEASE_SHA: ${{ github.event.inputs.sha || github.sha }}
-        run: python3 -m ci_lint release verify --repo . --dist dist --sha "$RELEASE_SHA" --smoke smoke-results
+          RESUME_MANIFEST: ${{ github.event.inputs.resume_from_run != '' && 'frozen/release-manifest.json' || '' }}
+        run: python3 -m ci_lint release verify --repo . --dist dist --sha "$RELEASE_SHA" --smoke smoke-results --readback readback --resume "$RESUME_MANIFEST"
 
       - name: Upload verified release dist (wheels + sdist + release-manifest.json)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
