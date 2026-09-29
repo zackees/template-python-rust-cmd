@@ -813,11 +813,19 @@ jobs:
     name: release-musl-smoke (${{ matrix.lane.id }})
     needs: [precheck, release-musl-build]
     if: ${{ !cancelled() && !failure() && needs.release-musl-build.result == 'success' }}
+    # NOT a job-level `container:` (tried first; reverted -- see commit
+    # message): GitHub's own Node.js "externals" that every JS action
+    # (`actions/checkout`, `actions/download-artifact`, ...) needs cannot
+    # exec inside an Alpine container on an arm64 runner ("JavaScript
+    # Actions in Alpine containers are only supported on x64 Linux
+    # runners", confirmed live: run 36520228712, job 109252029709).
+    # Instead this job runs directly on the host runner (every JS action
+    # works normally there) and reaches into Alpine with a single plain
+    # `docker run` `run:` step -- that is NOT a GitHub Actions container
+    # job, just an ordinary shell command, so the restriction above never
+    # applies to it. `python:3.13-alpine`'s multi-arch manifest makes
+    # Docker pull the native-arch image automatically to match `runs-on`.
     runs-on: ${{ matrix.lane.runs_on }}
-    # python:3.13-alpine, linux/amd64 + linux/arm64 multi-arch manifest --
-    # Docker pulls the native-arch image automatically to match `runs-on`.
-    container:
-      image: python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f
     timeout-minutes: 10
     permissions:
       contents: read
@@ -828,9 +836,6 @@ jobs:
           - { id: linux-x64-musl, runs_on: ubuntu-24.04 }
           - { id: linux-arm64-musl, runs_on: ubuntu-24.04-arm }
     steps:
-      # actions/checkout works fine inside a container job (the runner
-      # mounts its own Node.js "externals" into the container regardless
-      # of the image's own contents) -- needed only for `ci/musl_smoke.py`.
       - name: Checkout exact candidate commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -842,10 +847,10 @@ jobs:
           name: release-dist-${{ matrix.lane.id }}
           path: dist
 
-      - name: Native CLI smoke + write smoke-results/${{ matrix.lane.id }}.json
+      - name: Native CLI smoke inside Alpine (musl libc) + write smoke-results/${{ matrix.lane.id }}.json
         env:
           MUSL_SMOKE_PLATFORM_ID: ${{ matrix.lane.id }}
-        run: python3 ci/musl_smoke.py --wheel-dir dist --platform-id "$MUSL_SMOKE_PLATFORM_ID" --venv .venv-musl-smoke --cli-name template-cli --out smoke-results/${{ matrix.lane.id }}.json
+        run: docker run --rm -v "$PWD:/work" -w /work python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f python3 ci/musl_smoke.py --wheel-dir dist --platform-id "$MUSL_SMOKE_PLATFORM_ID" --venv .venv-musl-smoke --cli-name template-cli --out smoke-results/${{ matrix.lane.id }}.json
 
       - name: Upload release smoke result
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
