@@ -22,14 +22,14 @@ action's own `inputs:`, so a caller cannot override them even by accident.
 
 ## Pinning
 
-- `zackees/setup-soldr@c0b72703f3896ff66d4878b115365dceff3c7288` (`v0.9.81`,
-  the newest tagged release as of 2026-09-28). `v0` (the major-version
+- `zackees/setup-soldr@a07bab94f16124b5c6857b137a237a53a61e06d1` (`v0.9.82`,
+  the newest tagged release as of 2026-09-29). `v0` (the major-version
   moving tag) still resolves to `67ed4018aca013f8388050ac9bc264244f9b742c`
-  (the commit `v0.9.80` pointed at) as of this writing — `v0.9.81`'s
-  promotion needs a downstream FastLED/fbuild canary run that had not
-  landed yet — so this pin is intentionally one commit ahead of `v0` for
-  now, per `RUST-001`/`SEC-004`: every action reference is a full commit
-  SHA with a version comment, never a branch or moving tag.
+  (the commit `v0.9.80` pointed at) as of this writing — promoting `v0`
+  needs a downstream FastLED/fbuild canary run that had not landed yet, so
+  this pin is intentionally several commits ahead of `v0` for now, per
+  `RUST-001`/`SEC-004`: every action reference is a full commit SHA with a
+  version comment, never a branch or moving tag.
 - `version: "0.9.25"` (the `soldr` binary itself) matches
   `pyproject.toml`'s `requires = ["soldr==0.9.25"]` — the PEP 517 backend's
   own pin — so the CLI used by `./ci.sh`/CI steps and the backend used by
@@ -72,6 +72,49 @@ on a successful Dylint run — every run recomputed the lint from scratch.
   logging `exact hit - skipping save`. Job wall time 1m58s, vs. the
   pre-fix warm baseline's 2m33s — about 35s (23%) faster wall time on a
   fully warm, same-commit run now that both caches actually restore.
+
+## Cross-commit `dylint-output-cache` fix validation (setup-soldr#540, v0.9.82)
+
+`v0.9.81` fixed the success-marker identity mismatch above, but
+`dylint-output-cache`'s own key (`dylintOutputHash`, `src/lib/
+resolve-setup.ts`) still included `source_revision: githubSha`, so it was
+an exact-key miss on every **new** commit even with an unchanged Dylint
+toolchain, lint library and `Cargo.lock` — see run 36501659725 above
+(`dylint-output-cache: hit=false`, **expected** under `v0.9.81`, not a
+regression). `v0.9.82` (setup-soldr#541) drops the commit from the exact
+key and adds a `restore-keys` fallback that drops only the `Cargo.lock`
+component. Validated on branch `r2f-output-key` (deleted after this
+ingestion; its cache entries were deleted too), pinned to setup-soldr PR
+#541's head SHA:
+
+- **Cold, new key shape** (run
+  [36504380511](https://github.com/zackees/template-python-rust-cmd/actions/runs/36504380511),
+  job `109202536282`): `dylint-output-cache: key=setup-soldr-dylint-output-v2-linux-x64-2f3052f3bf6820ab-a87d2454829c34f1
+  hit=false` -> `dylint-output-cache: saved id=8240368805
+  key=setup-soldr-dylint-output-v2-linux-x64-2f3052f3bf6820ab-a87d2454829c34f1`
+  (71,397,993 bytes). Job wall time 1m24s (`dylint-cache` foundation
+  already hit).
+- **Same key, unchanged `Cargo.lock`, one Rust line changed** in
+  `crates/private/template-core/src/lib.rs` (run
+  [36504625315](https://github.com/zackees/template-python-rust-cmd/actions/runs/36504625315),
+  job `109203913679`): **the exact same key** as the cold run above now
+  restores with `hit=true matched=setup-soldr-dylint-output-v2-linux-x64-2f3052f3bf6820ab-a87d2454829c34f1`
+  — an **exact hit across two different commits**. The log still shows
+  `Checking template-core v0.1.0 (.../crates/private/template-core)`,
+  proving the changed crate was genuinely rechecked against the restored
+  tree rather than silently skipped. Job wall time **54s** — 2.3x faster
+  than the pre-2F, new-commit MISS baseline (run 36501659725, 2m05s) and
+  well under the `[lint.dylint].budget.warm` figure this repo tracks.
+- **Correctness: a restored cache must not hide a new violation.** A
+  `#[cfg(windows)]` added to the same file, outside the platform facade
+  (run [36505737115](https://github.com/zackees/template-python-rust-cmd/actions/runs/36505737115),
+  job `109206895144`, deliberately split across lines so the cheap static
+  `LAYOUT-001` precheck scan would not also catch it, isolating the
+  Dylint-specific signal): `dylint-output-cache` again restored via an
+  **exact hit**, then Dylint **failed**: `error: host-platform selection
+  outside the template-platform boundary: host cfg \`cfg(windows)\`` at
+  `crates/private/template-core/src/lib.rs:16:1`,
+  `#[deny(platform_boundary)] on by default`. Reverted immediately after.
 
 ## Inputs
 
