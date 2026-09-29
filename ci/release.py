@@ -70,8 +70,8 @@ def _make_executable(path: Path) -> None:
 # ---------------------------------------------------------------------------
 # build: sdist + release-profile linux-x64 wheel.
 #
-# **Round-5 finding (reported upstream, see the worker report): the wheel
-# is NOT built FROM the sdist here**, even though that is PKG-004's ideal
+# **Round-5 finding, filed upstream as zackees/soldr#3444: the wheel is
+# NOT built FROM the sdist here**, even though that is PKG-004's ideal
 # and issue #6 ci.yml#4's stated intent ("staged-artifact proof before any
 # publisher... build the wheel FROM the sdist"). A plain `uv build`
 # (sdist, then wheel-from-that-sdist -- the only path that satisfies

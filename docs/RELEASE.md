@@ -53,24 +53,29 @@ any manylinux floor, built for iteration speed, and never staged for
 `release-verify`/`publish`. Only the artifacts those two jobs actually
 handle (the release-profile wheel matrix) are held to glibc 2.17.
 
-**Known limitation** (reported upstream — see the worker report for the
-round-5 PR that found it): the wheel is built directly from the working
-tree, not from the sdist. `uv build`'s sdist-then-wheel-from-sdist path
-(PKG-004's ideal — see "What you CAN do locally today" below) fails
-reproducibly: maturin's sdist builder trims the workspace `Cargo.toml`
-it writes into the sdist to the Cargo dependency graph reachable from
-`[tool.maturin] manifest-path`, dropping `template-cli` (a `bundle-bins`
-sibling with no Cargo dependency edge to the extension crate) even
-though its files are copied in via `[tool.maturin] include`. `soldr
-build --bin template-cli ... --manifest-path <extracted-sdist>/crates/
-template-py/Cargo.toml` then fails with `package ID specification
-'template-cli' did not match any packages`. `ci/release.py`'s `build`
-subcommand works around this with two separate `uv build --sdist` /
-`uv build --wheel` calls (the same direct-from-tree wheel path `ci/
-fast.py`/`ci/platform_build.py` already use, just with `profile=release`
-added) — both artifacts are real and independently valid, but this gives
-up the stronger "wheel built from the sdist" claim until the upstream
-soldr/maturin issue is fixed.
+**Known limitation, filed upstream: [zackees/soldr#3444](https://github.com/zackees/soldr/issues/3444)**
+("bundle-bins: sdist-then-wheel build fails when the bundled bin's
+package isn't a Cargo dependency of the extension crate"). The wheel is
+built directly from the working tree, not from the sdist. `uv build`'s
+sdist-then-wheel-from-sdist path (PKG-004's ideal — see "What you CAN do
+locally today" below) fails reproducibly: maturin's sdist builder trims
+the workspace `Cargo.toml` it writes into the sdist to the Cargo
+dependency graph reachable from `[tool.maturin] manifest-path`, dropping
+`template-cli` (a `bundle-bins` sibling with no Cargo dependency edge to
+the extension crate) even though its files are copied in via
+`[tool.maturin] include`. `soldr build --bin template-cli ...
+--manifest-path <extracted-sdist>/crates/template-py/Cargo.toml` then
+fails with `package ID specification 'template-cli' did not match any
+packages`. `ci/release.py`'s `build` subcommand works around this with
+two separate `uv build --sdist` / `uv build --wheel` calls (the same
+direct-from-tree wheel path `ci/fast.py`/`ci/platform_build.py` already
+use, just with `profile=release` added) — both artifacts are real and
+independently valid; this does NOT weaken any `PKG-004` check (the
+sdist's own bundled `pyproject.toml` still genuinely declares
+`build-backend = "soldr"`, verified by `ci-lint release verify`'s paired
+sdist check same as always) — it only gives up the STRONGER "this exact
+wheel was built from this exact sdist" claim, until soldr#3444 is fixed
+upstream. Re-attempt the single-`uv build` path once that issue closes.
 
 ## What you CAN do locally today: build and inspect release artifacts
 
