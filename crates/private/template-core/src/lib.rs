@@ -1,4 +1,4 @@
-//! Shared domain layer for the template scaffold (D3 preserve-source-mtimes probe, ci.yml#6 round 4C).
+//! Shared domain layer for the template scaffold (D3 preserve-source-mtimes REPLAY verification, ci.yml#6 round 4C, second measurement).
 //!
 //! `publish = false`: this crate is never published on its own. It is
 //! compiled and unit-tested exactly once, in this workspace, and the
