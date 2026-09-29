@@ -57,8 +57,21 @@ on a successful Dylint run — every run recomputed the lint from scratch.
   (668,506,333 bytes uploaded), `dylint-output-cache: saved
   id=8239367155 key=setup-soldr-dylint-output-v1-linux-x64-19a07e71336de272`
   (74,568,687 bytes uploaded).
-- **Post-fix, warm PR run (this PR)**: TBD — filled in once this PR's own
-  CI run confirms both caches HIT and reports the Dylint lane time.
+- **Post-fix, this PR's own run** (run
+  [36501659725](https://github.com/zackees/template-python-rust-cmd/actions/runs/36501659725),
+  a *new* commit): `dylint-cache: hit=true matched=...-dylint` (the
+  toolchain/driver-scoped foundation cache — exact hit, as expected for
+  any commit using the same Dylint toolchain). `dylint-output-cache:
+  hit=false` — **expected**, not a regression: `dylintOutputHash`
+  (`src/lib/resolve-setup.ts`, unchanged by #539) has always included
+  `source_revision: githubSha`, so this per-commit-scoped cache only
+  hits when the exact same commit re-runs. Job wall time 2m05s.
+- **Post-fix, same-commit re-run** (`gh run rerun` of run 36501247176 on
+  its unchanged commit `021a5971ae88569d6b965b7acdb2ee3003eb5f99`):
+  `dylint-cache: hit=true` and `dylint-output-cache: hit=true`, both
+  logging `exact hit - skipping save`. Job wall time 1m58s, vs. the
+  pre-fix warm baseline's 2m33s — about 35s (23%) faster wall time on a
+  fully warm, same-commit run now that both caches actually restore.
 
 ## Inputs
 
