@@ -4,7 +4,7 @@ and `[flow.nightly]` are the only two flows that build the full wheel
 matrix for every platform ("full sweep" / "release rehearsal"); `pr` and
 `main` stay dev profile (unchanged from round 3/4).
 
-One line in `ci-precheck.yml`'s `precheck` job, reading `ci_lint plan`'s
+One line in `ci-pre.yml`'s `precheck` job, reading `ci_lint plan`'s
 own `plan.flow` field -- this never re-derives flow-selection logic
 itself; `ci_lint` is the one source of truth for what flow a run
 resolved to. The single `is-release` boolean output is then reused by

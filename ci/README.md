@@ -26,7 +26,7 @@ ci/
 ├── init.py                 # .github/workflows/ci.yml `init` job's logic (from-zero suite)
 ├── instantiate.py          # template-instantiation helper the `init` job drives
 ├── lockfile_changed.py     # cache-maint's Cargo.lock/uv.lock/rust-toolchain.toml diff check
-├── plan_profile.py         # ci-precheck.yml: derives is-release/profile from plan.flow
+├── plan_profile.py         # ci-pre.yml: derives is-release/profile from plan.flow
 ├── release_guard.py        # .github/workflows/ci.yml `release-guard` job's logic
 ├── release.py               # .github/workflows/ci.yml `release-linux-x64`/`release-verify` jobs' logic
 ├── perf.py                  # .github/workflows/ci.yml `perf` job's logic
@@ -42,7 +42,7 @@ ci/
 ## CI-workflow orchestration (`fast.py` / `dylint.py` / `ci_ok.py`)
 
 Added in zackees/ci.yml#6 round 2 alongside `.github/workflows/ci.yml` +
-`ci-precheck.yml`. These are NOT gates (they don't run under `./ci.py`) —
+`ci-pre.yml`. These are NOT gates (they don't run under `./ci.py`) —
 they are the Python side of the workflow's `run:` steps, one line per
 step (CLAUDE.md rule 6):
 
@@ -81,7 +81,7 @@ step (CLAUDE.md rule 6):
   selected for this lane. Round 5 adds `wheel-install --smoke-out
   <path>`: always writes a `smoke-results/<lane>.json` record, uploaded
   as an artifact only when `is-release`.
-- **`plan_profile.py`** (round 5) — one `ci-precheck.yml` step: derives
+- **`plan_profile.py`** (round 5) — one `ci-pre.yml` step: derives
   `is-release`/`profile` (`release`/`dev`) from `ci_lint plan`'s own
   `plan.flow`, so `release-guard`/`release-linux-x64`/`platform-build`/
   `platform-run`'s `--profile` arguments never repeat the `flow ==

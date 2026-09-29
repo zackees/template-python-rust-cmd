@@ -1,9 +1,9 @@
 name: ci
 
 # The ONLY workflow entrypoint in this repository (zackees/ci.yml#6 §1/§2,
-# D1 "one PR entrypoint"). `precheck` (below) calls ci-precheck.yml through
+# D1 "one PR entrypoint"). `precheck` (below) calls ci-pre.yml through
 # `workflow_call` and every other job `needs:` it, directly or transitively.
-# ci.toml's `linter` pin and this file's ci-precheck.yml checkout ref MUST
+# ci.toml's `linter` pin and this file's ci-pre.yml checkout ref MUST
 # match (`CT-004`).
 #
 # Round 3 (ci.yml#6 round 3B) adds: tag-selected platform lanes
@@ -16,7 +16,7 @@ name: ci
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened, edited, closed]
   push:
     branches: [main]
   schedule:
@@ -37,10 +37,10 @@ concurrency:
 
 jobs:
   precheck:
-    uses: ./.github/workflows/ci-precheck.yml
+    uses: ./.github/workflows/ci-pre.yml
     permissions:
       contents: read
-      # Read-only Actions API access, passed down into ci-precheck.yml's
+      # Read-only Actions API access, passed down into ci-pre.yml's
       # own `permissions:` (a reusable workflow's effective token
       # permissions are the caller's grant, intersected with the
       # callee's own request) -- needed for `ci_lint plan --reuse`'s
@@ -49,7 +49,7 @@ jobs:
       # @31369f5): `actions: read` no longer needs a ci.toml
       # `[[exceptions]]` entry, top-level or per-job. Round-4C: `write`
       # (not `read`; `write` covers `read` for the same scope) -- passed
-      # down so ci-precheck.yml's own `precheck` job can run `ci_lint
+      # down so ci-pre.yml's own `precheck` job can run `ci_lint
       # cache trim` (deletes closed/merged-PR and stale-base compile-delta
       # entries on every same-repo PR precheck; ci.toml
       # [allow].permissions."actions: write" = [..., "precheck"]).
@@ -97,7 +97,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 
@@ -112,12 +112,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 -m ci_lint cache preprune --repo . --lockfile-changed --max-deletes 50
 
-      - name: Janitor (nightly only -- CACHE-001/003/005/006/009 + stale entries)
-        if: github.event_name == 'schedule'
-        env:
-          PYTHONPATH: .ci-lint
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 -m ci_lint cache janitor --repo . --max-deletes 50
 
   # Job id MUST be exactly "fast" -- ci_lint gate's required-job-id
   # convention (orchestrator decision on zackees/ci.yml PR #11: precheck,
@@ -136,7 +130,7 @@ jobs:
     # writer flows) -- the plain default `if:` (implicit `success()`)
     # would otherwise skip `fast` on every PR too, since `success()` is
     # false when any `needs:` entry is skipped, not just failed.
-    if: ${{ !cancelled() && !failure() && needs.precheck.outputs.fast_reused != 'true' }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && needs.precheck.outputs.fast_reused != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -164,7 +158,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 
@@ -174,6 +168,7 @@ jobs:
         with:
           ci-tests: "true"
           save-cache: ${{ needs.precheck.outputs.cache_save }}
+          cache-key-pr: ${{ needs.precheck.outputs.cache_key_pr }}
           # Round-4C (ci.yml#6 §6 D3): measured CORRECT (the edited crate
           # and its real dependents always still recompiled, identically
           # with the flag on or off -- never a false skip) but NOT faster
@@ -194,6 +189,7 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           save-cache: ${{ needs.precheck.outputs.cache_save }}
+          cache-suffix: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.cache_key_pr || '' }}
 
       # ── PR compile-delta cache (round-4C, ci.yml#6 §6 "PR caches: a
       # small delta, never a base"). PR-scoped only: `main`/`nightly`
@@ -342,7 +338,7 @@ jobs:
     name: dylint [${{ fromJSON(needs.precheck.outputs.lane_digests_json).dylint }}]
     needs: [precheck, cache-maint]
     # See `fast`'s identical condition comment above.
-    if: ${{ !cancelled() && !failure() && needs.precheck.outputs.dylint_reused != 'true' }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && needs.precheck.outputs.dylint_reused != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -366,6 +362,7 @@ jobs:
           verify-compile-cache: "warn"
           cache-key-suffix: "dylint"
           save-cache: ${{ needs.precheck.outputs.cache_save }}
+          cache-key-pr: ${{ needs.precheck.outputs.cache_key_pr }}
           # Round-4C (ci.yml#6 §6 D3): see the `fast` job's Setup soldr
           # step for what this measured (correct, but not faster here).
           preserve-source-mtimes: "false"
@@ -381,10 +378,10 @@ jobs:
   # and wheel, all on Linux through Soldr; nothing here ever runs on the
   # target's own OS (zackees/ci.yml#6 §2/§3, D4).
   platform-build:
-    name: platform-build (${{ matrix.lane.id }}) [${{ fromJSON(needs.precheck.outputs.lane_digests_json)[format('platform:{0}', matrix.lane.id)] }}]
+    name: platform-build (${{ matrix.lane.id }}) (on ubuntu-24.04, soldr) [${{ fromJSON(needs.precheck.outputs.lane_digests_json)[format('platform:{0}', matrix.lane.id)] }}]
     needs: [precheck, cache-maint]
     # See `fast`'s identical condition comment above.
-    if: ${{ !cancelled() && !failure() && needs.precheck.outputs.platform_lanes_todo_json != '[]' }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && needs.precheck.outputs.platform_lanes_todo_json != '[]' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     permissions:
@@ -410,7 +407,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 
@@ -433,11 +430,13 @@ jobs:
           # evaluates false when is-release, and otherwise is identical to
           # every other job's plain cache_save passthrough.
           save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+          cache-key-pr: ${{ needs.precheck.outputs.cache_key_pr }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+          cache-suffix: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.cache_key_pr || '' }}
 
       - name: Build + capture compiler-artifact JSON (cross target)
         run: python3 ci/platform_build.py build-json --target ${{ matrix.lane.target }} --profile ${{ needs.precheck.outputs.profile }} --out ${{ runner.temp }}/cargo-messages.jsonl
@@ -479,7 +478,7 @@ jobs:
   # lane's OWN runner (native execution, D4) -- no Rust toolchain, no
   # `soldr`/`cargo` step anywhere in this job.
   platform-run:
-    name: platform-run (${{ matrix.lane.id }}) [${{ fromJSON(needs.precheck.outputs.lane_digests_json)[format('platform:{0}', matrix.lane.id)] }}]
+    name: platform-run (${{ matrix.lane.id }}) (native, prebuilt) [${{ fromJSON(needs.precheck.outputs.lane_digests_json)[format('platform:{0}', matrix.lane.id)] }}]
     needs: [precheck, platform-build]
     # `!cancelled() && !failure() && ...`, not the bare comparison alone:
     # observed empirically on a real run (36506934489, ci.yml#6 round-4B
@@ -494,7 +493,7 @@ jobs:
     # -- including a job this one doesn't directly `need:` at all
     # (`cache-maint`, skipped on every PR run by design). Same fix as
     # `fast`/`dylint`/`platform-build`'s identical-shaped conditions.
-    if: ${{ !cancelled() && !failure() && needs.platform-build.result == 'success' }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && needs.platform-build.result == 'success' }}
     runs-on: ${{ matrix.lane.runs_on }}
     timeout-minutes: 15
     permissions:
@@ -518,7 +517,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 
@@ -532,6 +531,7 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           save-cache: ${{ needs.precheck.outputs.cache_save }}
+          cache-suffix: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.cache_key_pr || '' }}
 
       - name: Run every declared test binary directly (unit suite, when selected; no Rust toolchain)
         if: contains(matrix.lane.suites, 'unit')
@@ -595,7 +595,7 @@ jobs:
     name: release-guard
     needs: [precheck, cache-maint]
     # See `fast`'s identical condition comment above (cache-maint tolerance).
-    if: ${{ !cancelled() && !failure() && needs.precheck.outputs.is-release == 'true' }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && needs.precheck.outputs.is-release == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -624,7 +624,7 @@ jobs:
   release-linux-x64:
     name: release-linux-x64
     needs: [precheck, cache-maint, release-guard]
-    if: ${{ !cancelled() && !failure() && needs.release-guard.result == 'success' }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && needs.release-guard.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -643,7 +643,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 
@@ -671,11 +671,13 @@ jobs:
           # budget proof doesn't account for a second, release-profile
           # generation of `deps`/`compile`).
           save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+          cache-key-pr: ${{ needs.precheck.outputs.cache_key_pr }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+          cache-suffix: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.cache_key_pr || '' }}
 
       - name: Build sdist + release-profile wheel (Soldr PEP 517 backend, manylinux_2_17 cross sysroot)
         id: release-build
@@ -719,7 +721,7 @@ jobs:
   release-verify:
     name: release-verify
     needs: [precheck, release-guard, release-linux-x64, platform-build, platform-run]
-    if: ${{ !cancelled() && !failure() && fromJSON(needs.precheck.outputs.plan).publish != 'none' }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && fromJSON(needs.precheck.outputs.plan).publish != 'none' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -734,7 +736,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 
@@ -790,7 +792,7 @@ jobs:
   publish:
     name: publish
     needs: [precheck, release-verify]
-    if: ${{ !cancelled() && !failure() && fromJSON(needs.precheck.outputs.plan).publish == 'mock' }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && fromJSON(needs.precheck.outputs.plan).publish == 'mock' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: pypi
@@ -807,7 +809,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 
@@ -831,7 +833,7 @@ jobs:
   perf:
     name: perf
     needs: [precheck, cache-maint]
-    if: ${{ !cancelled() && !failure() && contains(fromJSON(needs.precheck.outputs.suites_json), 'perf') }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && contains(fromJSON(needs.precheck.outputs.suites_json), 'perf') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -847,7 +849,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 
@@ -859,11 +861,13 @@ jobs:
           cache-key-suffix: "perf"
           # Never saved -- see release-linux-x64's identical note.
           save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+          cache-key-pr: ${{ needs.precheck.outputs.cache_key_pr }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+          cache-suffix: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.cache_key_pr || '' }}
 
       - name: Run benchmark (CLI startup xN, PyO3 call xM; release profile)
         run: python3 ci/perf.py bench --wheel-dir ${{ runner.temp }}/perf-wheel --venv ${{ runner.temp }}/.venv-perf --python 3.11 --out ${{ runner.temp }}/perf-current.json
@@ -897,7 +901,7 @@ jobs:
   init:
     name: init
     needs: [precheck, cache-maint]
-    if: ${{ !cancelled() && !failure() && contains(fromJSON(needs.precheck.outputs.fast_suites_json), 'init') }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && contains(fromJSON(needs.precheck.outputs.fast_suites_json), 'init') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
@@ -914,7 +918,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 
@@ -953,7 +957,7 @@ jobs:
 
   ci-ok:
     name: CI OK
-    if: always()
+    if: ${{ always() && github.event.action != 'closed' }}
     needs: [precheck, fast, dylint, platform-build, platform-run, init, release-verify, publish, perf]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -974,7 +978,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: e8440870d959782c310db12d47305d8ba6cbaf4a
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
           path: .ci-lint
           persist-credentials: false
 

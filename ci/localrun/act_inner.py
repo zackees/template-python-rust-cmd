@@ -14,7 +14,7 @@ against the machine-scoped cache-server volume and writes
 `.act-local/result.json` for the host step to read back.
 
 Resolved gap (round-4B act parity; see README "GITHUB_TOKEN and
-cross-repo checkouts" for the history): `ci.yml`/`ci-precheck.yml`'s own
+cross-repo checkouts" for the history): `ci.yml`/`ci-pre.yml`'s own
 "Checkout ci-lint (zackees/ci.yml, pinned)" steps are skipped under act
 (`if: env.ACT != 'true'`) instead of hitting `actions/checkout`'s
 `repository:`-override token requirement (act does not auto-populate

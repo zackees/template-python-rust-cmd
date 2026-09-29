@@ -62,7 +62,7 @@ in 3.5s total, versus 61.7s cold.
 clang-fixed container talking to the host Docker engine -- confirmed:
 the stack image builds, the runner image builds (or is skipped when
 warm), `act` starts, resolves `ci.yml`'s reusable-workflow job graph
-(`precheck` inside `ci-precheck.yml`), and reaches the job's second
+(`precheck` inside `ci-pre.yml`), and reaches the job's second
 step. It then hits a real, reproduced act limitation unrelated to
 anything in this stack: `ci.yml`'s `Checkout ci-lint (zackees/ci.yml,
 pinned)` step uses `actions/checkout` with an explicit `repository:`

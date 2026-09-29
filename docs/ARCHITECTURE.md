@@ -43,7 +43,7 @@ Load-bearing pieces:
    (this change) deleted the previous `ci.yml` — it queued a retired
    `macos-13` runner for 24h on every run and never passed. A later
    round adds `.github/workflows/ci.yml` (the only trigger-bearing
-   workflow) + `ci-precheck.yml` (workflow_call only), planned by
+   workflow) + `ci-pre.yml` (workflow_call only), planned by
    `ci.toml`. Until then, `./ci.py all` locally is the equivalent.
 6. **`action.yml` + `action/cleanup/action.yml`.** Composite action
    contract. Validated by `ci/gates/action_yaml.py` (structural) +
