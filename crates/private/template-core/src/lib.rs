@@ -32,6 +32,17 @@ pub fn run_cli() -> anyhow::Result<()> {
     Ok(())
 }
 
+// DELIBERATE VIOLATION (round 2F, run 3): a host `#[cfg]` outside the one
+// allowed selector file (crates/private/template-platform/src/lib.rs) and
+// outside its platforms/** tree. Must fail the `platform_boundary` Dylint
+// Deny lint even though dylint-output-cache restores via an exact hit here
+// (unchanged Cargo.lock) -- a restored cache must never hide a newly
+// introduced violation in freshly checked-out source. Reverted after run 3.
+#[cfg(windows)]
+pub fn windows_only_marker() -> &'static str {
+    "windows-only"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
