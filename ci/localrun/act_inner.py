@@ -97,9 +97,7 @@ def _run_lane(
     extra_git_mount: str | None,
 ) -> tuple[float, int]:
     ARTIFACT_SERVER.mkdir(parents=True, exist_ok=True)
-    container_options = (
-        f"--init --label template.act-run={run_id} -v {CI_LINT_VOLUME_NAME}:/work/.ci-lint"
-    )
+    container_options = f"--init --label template.act-run={run_id} -v {CI_LINT_VOLUME_NAME}:/work/.ci-lint"
     if extra_git_mount:
         # zackees/ci.yml#47: `act`'s own Checkout step is a plain `docker
         # cp` of `/work` into each job container, not a real clone -- a
