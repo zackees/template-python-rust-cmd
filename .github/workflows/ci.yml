@@ -666,24 +666,18 @@ jobs:
           path: .ci-lint
           persist-credentials: false
 
-      # `cross-target: x86_64-unknown-linux-gnu` -- same arch as this
-      # `ubuntu-24.04` host, but routes through Soldr's controlled
-      # manylinux_2_17 cross sysroot instead of the runner's own (newer)
-      # glibc -- the SAME mechanism `linux-arm64`'s platform-build leg
-      # already uses successfully. A plain host build (no cross-target)
-      # tags itself with the runner's real glibc (`manylinux_2_34_x86_64`
-      # on `ubuntu-24.04`, confirmed live: run 36510818002, job
-      # 109222847723) -- the fleet's declared glibc-2.17 floor
-      # (docs/policy-rust.md) requires the sysroot, not a relaxed
-      # declaration. `ci/release.py glibc-check` (below) verifies the
-      # staged wheel's actual max required GLIBC symbol version against
-      # this floor from the artifact's own bytes, not just the wheel
-      # filename tag.
-      - name: Setup soldr (release profile, manylinux_2_17 cross sysroot)
+      # No `cross-target` (template-python-rust-cmd#39, ci.yml#19):
+      # `soldr wheel --release` builds a host-target `*-linux-gnu` wheel
+      # against soldr's catalogue glibc-2.17 toolchain itself
+      # (zackees/soldr#3432) and tags it `manylinux_2_17`; the earlier
+      # workaround forced `cross-target: x86_64-unknown-linux-gnu` to get
+      # that sysroot. `ci/release.py glibc-check` (below) still verifies
+      # the staged wheel's actual max required GLIBC symbol version from
+      # the artifact's own bytes.
+      - name: Setup soldr (release profile)
         uses: ./.github/actions/soldr
         with:
           ci-tests: "true"
-          cross-target: "x86_64-unknown-linux-gnu"
           prebuild-deps-flags: "--release"
           cache-key-suffix: "release"
           # Never saved -- see platform-build's identical note (CACHE-004
@@ -700,7 +694,7 @@ jobs:
 
       - name: Build sdist (Soldr PEP 517 backend) + release wheel (soldr wheel --release, manylinux_2_17)
         id: release-build
-        run: python3 ci/release.py build --target x86_64-unknown-linux-gnu --out dist/release-linux-x64
+        run: python3 ci/release.py build --out dist/release-linux-x64
 
       - name: sdist smoke (wheel built FROM the sdist through the Soldr PEP 517 backend, PKG-004)
         env:

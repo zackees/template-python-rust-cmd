@@ -11,13 +11,11 @@ linter  = "zackees/ci.yml@665379279c00bad5f82c627306882e2649d88974"      # the e
 # `linux-x64`'s `wheel` stays `manylinux_2_17` -- the fleet's declared
 # glibc floor for a distributed Linux wheel (docs/policy-rust.md,
 # proposal.md's target model), NOT a value to relax to match whatever a
-# particular build happened to produce. Round 5 found the RELEASE build
-# must route linux-x64 through Soldr's same manylinux_2_17 cross sysroot
-# `linux-arm64` already uses (`cross-target: x86_64-unknown-linux-gnu`,
-# same arch as the host but a controlled sysroot instead of the runner's
-# own newer glibc) -- see `ci/release.py`'s `cmd_build` docstring and
-# `ci/release.py glibc-check`'s live-measured evidence in the round's
-# worker report. The `fast` lane's dev-profile wheel stays host-native
+# particular build happened to produce. `soldr wheel --release` builds
+# every `*-linux-gnu` release wheel, host target included, against
+# soldr's catalogue glibc-2.17 toolchain (zackees/soldr#3432,
+# template-python-rust-cmd#39); `ci/release.py glibc-check` measures it
+# from the artifact's own bytes. The `fast` lane's dev-profile wheel stays host-native
 # (untagged manylinux floor) for iteration speed; only release/verify
 # artifacts are held to this floor -- see docs/RELEASE.md.
 [platforms]
