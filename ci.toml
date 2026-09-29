@@ -145,6 +145,14 @@ compile    = { via = "setup-soldr:build-cache",     max = "110MB", lockfile = tr
 # key = "setup-soldr-prepare-v3-{os}-{arch}-{target}-r{repoHash}"
 # (blessed-cross-prepare.ts:89) -- one per actual cross target, never the
 # host. per="cross-platform" (5) is exactly right by construction.
+# UNMEASURED (round-4B): no live setup-soldr-prepare-v3-* entry exists
+# yet -- prepare/save only happens on a writer flow (main/nightly), and
+# this round's platform-build runs (windows-x64, windows-arm64; PR #24,
+# runs 36506934489/36507324528) correctly never saved (cache_save=false,
+# proven: no new refs/pull/24/merge entry appeared). 500MB is the
+# pre-round-4 placeholder, carried forward; re-measure via `ci-lint
+# cache audit` after the first writer-flow (main) run and tighten this
+# to measured x ~1.5 like every other family above.
 sdk        = { via = "setup-soldr:cross-targets",   max = "500MB", per = "cross-platform" }
 # key = "setup-soldr-dylint-v2-{os}-{arch}-{target}-{digest}-dylint"
 # (resolve-setup.ts:1185) -- the nightly Dylint toolchain + driver +
