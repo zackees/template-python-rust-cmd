@@ -40,7 +40,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
 
-    wheels = sorted(p for p in Path(args.wheel_dir).glob("*.whl") if args.platform_id in p.name or "musllinux" in p.name)
+    wheels = sorted(
+        p
+        for p in Path(args.wheel_dir).glob("*.whl")
+        if args.platform_id in p.name or "musllinux" in p.name
+    )
     if not wheels:
         # Fall back to any wheel in the dir (single-wheel dist, the
         # normal case: `release-musl-build` stages exactly one wheel +
@@ -52,12 +56,22 @@ def main(argv: list[str] | None = None) -> int:
     wheel_path = wheels[-1]
 
     venv_dir = Path(args.venv)
-    rc = subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=False).returncode
+    rc = subprocess.run(
+        [sys.executable, "-m", "venv", str(venv_dir)], check=False
+    ).returncode
     if rc != 0:
         return rc
     venv_python = venv_dir / "bin" / "python3"
     rc = subprocess.run(
-        [str(venv_python), "-m", "pip", "install", "--no-index", "--no-build-isolation", str(wheel_path)],
+        [
+            str(venv_python),
+            "-m",
+            "pip",
+            "install",
+            "--no-index",
+            "--no-build-isolation",
+            str(wheel_path),
+        ],
         check=False,
     ).returncode
 
