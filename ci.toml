@@ -65,7 +65,7 @@ budget  = { warm = "115s", cold = "235s" }  # round 3B's own cold numbers; round
 unit        = { run = "ci/test.py unit",        required = true }
 smoke       = { run = "ci/wheel.py smoke",      required = true }    # clean venv: import + native CLI
 integration = { run = "pytest -m integration tests/integration" }
-init        = { run = "ci/test.py init",        cache = "none" }     # from zero: proves caches mask nothing
+init        = { run = "ci/instantiate.py",      cache = "none" }     # from zero: proves caches mask nothing (ci/instantiate.py -> ci_lint precheck -> ci/init.py build/wheel-build/wheel-install/wheel-smoke, the `init` job)
 perf        = { run = "ci/perf.py",             kind = "bench", gating = false }
 
 # ── Flows ────────────────────────────────────────────────────────────────────
