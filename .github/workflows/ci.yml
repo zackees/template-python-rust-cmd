@@ -462,10 +462,75 @@ jobs:
         if: contains(matrix.lane.suites, 'integration')
         run: python3 ci/platform_run.py integration-test --venv .venv-smoke
 
+  # Job id MUST be exactly "init" (ci_lint gate's required-job-id
+  # convention, zackees/ci.yml@db0be5c: required when the `init` suite is
+  # selected). ci.toml [suites].init / round-4B-followup: "from zero --
+  # proves caches mask nothing". NO cache restore anywhere in this job
+  # (setup-soldr `cache: "false"`, setup-uv `enable-cache: false`) --
+  # instantiates a freshly renamed copy of this repo (ci/instantiate.py),
+  # precheck-validates THAT tree (proving the template itself, not just
+  # this checkout, satisfies ci.toml), builds and wheel-smokes it.
+  init:
+    name: init
+    needs: [precheck, cache-maint]
+    if: ${{ !cancelled() && !failure() && contains(fromJSON(needs.precheck.outputs.fast_suites_json), 'init') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Skipped under act -- see the `fast` job's identical step for why.
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        if: env.ACT != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: db0be5c8cea71c12b31493a994e874e87f76390c
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Setup soldr (no cache restore -- from zero)
+        uses: ./.github/actions/soldr
+        with:
+          ci-tests: "true"
+          cache: "false"
+          save-cache: "false"
+
+      - name: Install uv (no cache -- from zero)
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: false
+          save-cache: false
+
+      - name: Instantiate a freshly renamed copy of this repo
+        run: python3 ci/instantiate.py --name init-suite-demo --out ${{ runner.temp }}/init-suite-demo
+
+      - name: ci_lint precheck on the generated tree (template validation)
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 -m ci_lint precheck --repo ${{ runner.temp }}/init-suite-demo --local
+
+      - name: Build the generated tree through Soldr, from zero
+        run: python3 ci/init.py build --target ${{ runner.temp }}/init-suite-demo
+
+      - name: Build the generated tree's wheel (Soldr PEP 517 backend)
+        run: python3 ci/init.py wheel-build --target ${{ runner.temp }}/init-suite-demo --out ${{ runner.temp }}/init-suite-demo/dist
+
+      - name: Clean-venv install of the generated tree's wheel
+        run: python3 ci/init.py wheel-install --target ${{ runner.temp }}/init-suite-demo --wheel-dir ${{ runner.temp }}/init-suite-demo/dist --venv ${{ runner.temp }}/init-suite-demo/.venv-smoke --python 3.11
+
+      - name: Smoke-test the generated tree's native CLI + PyO3 extension
+        run: python3 ci/init.py wheel-smoke --target ${{ runner.temp }}/init-suite-demo --venv ${{ runner.temp }}/init-suite-demo/.venv-smoke
+
   ci-ok:
     name: CI OK
     if: always()
-    needs: [precheck, fast, dylint, platform-build, platform-run]
+    needs: [precheck, fast, dylint, platform-build, platform-run, init]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

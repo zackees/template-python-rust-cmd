@@ -104,6 +104,16 @@ inputs:
       this text broke every caller with "Unrecognized named-value:
       'needs'".)
     required: true
+  cache:
+    description: >-
+      Forwarded to setup-soldr's own top-level `cache` umbrella switch
+      (round-4B-followup, the `init` job / ci.toml [suites].init: "the
+      `init` suite proves the template bootstraps from zero -- no cache
+      restore"). "false" disables every cache layer's restore AND save
+      outright (setup-soldr's own doc: forces every per-layer flag off
+      too); leave at the default "true" for every other caller.
+    required: false
+    default: "true"
 
 outputs:
   cache-policy-json:
@@ -148,6 +158,9 @@ runs:
         # retired family (CACHE-009) or a per-PR base save (#527/#5 RUST-010).
         solo-toolchain-cache: "false"
         cook-delta: "false"
+        # Round-4B-followup: the `init` job's own no-cache-restore
+        # requirement (see this action's `cache` input doc above).
+        cache: ${{ inputs.cache }}
         # Round-4B: plan-driven, not the fixed "auto" this used before.
         # setup-soldr's own "auto" saves on every non-pull_request event,
         # which is WRONG for `workflow_dispatch` (the release flow, never
