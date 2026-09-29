@@ -14,8 +14,15 @@ name = "template_ballast"
 doctest = false
 
 [dependencies]
+# NOT "rustls-tls": that feature pulls in `ring`, whose build script needs
+# `lib.exe` (MSVC's librarian) even for `cargo check` -- breaks the Dylint
+# lane's cross-target check against windows-msvc when cross-checking from
+# a Linux host with no MSVC toolchain installed (round-4C worker report
+# has the failure). No TLS backend at all keeps the http/hyper/tokio
+# closure (still the point of pulling reqwest in) without that C-toolchain
+# dependency; this crate never makes a real network call anyway.
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }

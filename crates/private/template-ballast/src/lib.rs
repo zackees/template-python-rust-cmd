@@ -13,7 +13,10 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 #[derive(Parser, Debug)]
-#[command(name = "template-ballast", about = "sim/clud-scale measurement ballast -- never shipped")]
+#[command(
+    name = "template-ballast",
+    about = "sim/clud-scale measurement ballast -- never shipped"
+)]
 pub struct BallastArgs {
     #[arg(long, default_value = "https://example.invalid")]
     pub url: String,
@@ -35,13 +38,18 @@ pub fn label_pattern() -> Regex {
 /// Builds (but never sends) a reqwest client -- proves the TLS/async
 /// stack links without making a real network call in a measurement run.
 pub fn build_client() -> reqwest::Client {
-    reqwest::Client::builder().build().expect("client builder never fails with no extra config")
+    reqwest::Client::builder()
+        .build()
+        .expect("client builder never fails with no extra config")
 }
 
 /// Runs one no-op tokio task on a fresh current-thread runtime -- proves
 /// the full tokio feature set links and actually schedules a task.
 pub fn run_once(payload: BallastPayload) -> BallastPayload {
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("current-thread runtime always builds");
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("current-thread runtime always builds");
     rt.block_on(async {
         let span = tracing::info_span!("ballast_run_once", label = %payload.label);
         let _guard = span.enter();
@@ -63,7 +71,10 @@ mod tests {
 
     #[test]
     fn run_once_round_trips() {
-        let out = run_once(BallastPayload { label: "probe".to_string(), count: 3 });
+        let out = run_once(BallastPayload {
+            label: "probe".to_string(),
+            count: 3,
+        });
         assert_eq!(out.label, "probe");
         assert_eq!(out.count, 3);
     }
