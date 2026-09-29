@@ -44,16 +44,20 @@ binaries = [
 # ── Lint lanes ───────────────────────────────────────────────────────────────
 [lint.dylint]
 targets = "all-platforms"           # one check-only pass per declared target, all on Linux
-# shape/budget: round 2 could not measure D6 (see the worker report) --
-# the nightly-2026-02-28 Dylint driver has no catalogued asset, and
-# soldr's SOLDR_ALLOW_DYLINT_DRIVER_BUILD=1 source-build fallback fails
-# closed on real CI (nested-cargo toolchain resolution, upstream soldr
-# defect). Every "sequential" vs "multi-target" number gathered so far
-# is dominated by that failure/retry noise, not real lint time. Left at
-# round 1's starting values; a later round remeasures once the driver
-# is obtainable.
-shape   = "measure"                 # "multi-target" | "sequential" | "per-target-jobs"
-budget  = { warm = "235s", cold = "480s" }
+# shape: D6 measured round 3B, nightly-2026-05-28 driver now catalogued
+# (round 2's blocker resolved). Same-commit, both cold (no cache: PR
+# flow never writes), host + 5 cross targets, 6 declared platforms:
+#   sequential:    6 passes, 88.8s check time (+ ~15s prepare), job 148s
+#     (run 36500282280, job 109187749194)
+#   multi-target:  1 pass,   55.5s check time (+ ~14s prepare), job 114s
+#     (run 36501033796, job 109191488953)
+# multi-target is 37% faster on the check passes themselves and 23%
+# faster end to end -- confirms the D6 hypothesis (host-side proc-macro/
+# build-script artifacts compile once for every target in one
+# invocation, instead of once per sequential pass). Selected as the
+# winner; ci.yml's dylint job passes --shape multi-target accordingly.
+shape   = "multi-target"            # "multi-target" | "sequential" | "per-target-jobs"
+budget  = { warm = "115s", cold = "235s" }  # round 3B's own cold numbers; round 4 recalibrates "warm" once caching exists
 
 # ── Suites ───────────────────────────────────────────────────────────────────
 # Each id generates [ci-test-<id>] and [no-test-<id>]. A skip inside a required suite is a failure.
