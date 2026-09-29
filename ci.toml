@@ -52,6 +52,7 @@ binaries = [
   "template-json:lib",
   "template:test:api",
   "template-cli:test:cli",
+  "template-ballast:lib", # sim/clud-scale ONLY (ci.yml#6 round 4C step 4) -- never on main
 ]
 
 # ── Lint lanes ───────────────────────────────────────────────────────────────
@@ -205,7 +206,11 @@ cache  = "machine"
 
 # ── Allowlists ───────────────────────────────────────────────────────────────
 [allow]
-workflows         = { "ci.yml" = ["pull_request", "push:main", "schedule", "workflow_dispatch"], "ci-precheck.yml" = ["workflow_call"] }
+# "push" (not "push:main"): sim/clud-scale ONLY (ci.yml#6 round 4C step 4,
+# never merged to main) widens on.push.branches to include this branch,
+# which makes ci_lint's own trigger-string shape generic ("push", not
+# "push:main") -- see .github/workflows/ci.yml's push trigger comment.
+workflows         = { "ci.yml" = ["pull_request", "push", "schedule", "workflow_dispatch"], "ci-precheck.yml" = ["workflow_call"] }
 actions           = ["actions/checkout", "actions/upload-artifact", "actions/download-artifact", "actions/cache", "zackees/setup-soldr", "astral-sh/setup-uv"]
 # "plan" (round-4B): the wrapper's save-cache input must be an expression
 # derived from the precheck plan (needs.precheck.outputs.cache_save, passed

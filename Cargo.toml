@@ -7,6 +7,7 @@ members = [
     "crates/private/template-core",
     "crates/private/template-json",
     "crates/private/template-platform",
+    "crates/private/template-ballast", # sim/clud-scale ONLY (ci.yml#6 round 4C step 4) -- never on main
 ]
 
 [workspace.package]

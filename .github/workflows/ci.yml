@@ -18,7 +18,14 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
   push:
-    branches: [main]
+    # sim/clud-scale ONLY (ci.yml#6 round 4C step 4, never merged to
+    # main): a push here must resolve flow "main" (ci_lint.plan.
+    # EVENT_TO_FLOW["push"] = "main" unconditionally) so the clud-scale
+    # ballast's own compile/deps/registry/dylint families actually WRITE
+    # a base -- otherwise cold-vs-warm can't be measured at all. See
+    # ci.toml [allow].workflows."ci.yml" (widened to plain "push" on
+    # this branch only) and this file's own header comment.
+    branches: [main, "sim/clud-scale"]
   schedule:
     - cron: "7 3 * * *" # daily; ci.toml [flow.nightly] schedule = "daily"
   workflow_dispatch:
