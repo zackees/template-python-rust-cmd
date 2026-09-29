@@ -83,7 +83,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: bab8cbac9a78a1b2f0645ed082f54d0e3a23106d
+          ref: 551d909ad38ac5ccba5bf410fd20b6e8d2b17bed
           path: .ci-lint
           persist-credentials: false
 
@@ -100,6 +100,9 @@ jobs:
 
       - name: clippy
         run: ./ci.sh clippy
+
+      - name: ruff (check + format, GEN-004)
+        run: ./ci.sh ruff
 
       - name: Build + capture compiler-artifact JSON
         run: python3 ci/fast.py build-json --out ${{ runner.temp }}/cargo-messages.jsonl
@@ -119,6 +122,9 @@ jobs:
 
       - name: Run Python tests (unit suite)
         run: python3 ci/fast.py python-test
+
+      - name: pylint (GEN-004; after python-test so `_native` is built)
+        run: ./ci.sh pylint
 
       - name: Integration suite (ci.toml [suites].integration, when selected)
         if: contains(fromJSON(needs.precheck.outputs.fast_suites_json), 'integration')
@@ -206,7 +212,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: bab8cbac9a78a1b2f0645ed082f54d0e3a23106d
+          ref: 551d909ad38ac5ccba5bf410fd20b6e8d2b17bed
           path: .ci-lint
           persist-credentials: false
 
@@ -284,7 +290,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: bab8cbac9a78a1b2f0645ed082f54d0e3a23106d
+          ref: 551d909ad38ac5ccba5bf410fd20b6e8d2b17bed
           path: .ci-lint
           persist-credentials: false
 
@@ -349,7 +355,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: bab8cbac9a78a1b2f0645ed082f54d0e3a23106d
+          ref: 551d909ad38ac5ccba5bf410fd20b6e8d2b17bed
           path: .ci-lint
           persist-credentials: false
 

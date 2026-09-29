@@ -40,6 +40,7 @@ GATE_ORDER: list[str] = [
     "clippy",
     "ruff",
     "build",
+    "pylint",
     "test",
     "backend_smoke",
     "action_yaml",

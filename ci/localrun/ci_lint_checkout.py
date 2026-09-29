@@ -14,9 +14,10 @@ from __future__ import annotations
 import re
 import subprocess
 import time
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+import tomllib
 
 CI_LINT_REMOTE = "https://github.com/zackees/ci.yml.git"
 _LINTER_RE = re.compile(r"^([\w.-]+/[\w.-]+)@([0-9a-fA-F]{40})$")

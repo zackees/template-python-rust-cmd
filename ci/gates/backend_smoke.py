@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # zero runtime dependencies and never needs the `_native` extension
 # built. See that module's docstring.
 sys.path.insert(0, str(ROOT / "src"))
+# pylint: disable-next=wrong-import-position
 from template_python_rust_cmd.platforms import is_linux  # noqa: E402
 
 

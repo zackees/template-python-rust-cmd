@@ -29,9 +29,10 @@ import os
 import subprocess
 import sys
 import time
-import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -78,13 +79,23 @@ def _load_platforms(repo: Path) -> list[DylintTarget]:
         data = tomllib.load(fh)
     platforms = data.get("platforms", {})
     if not isinstance(platforms, dict) or not platforms:
-        raise SystemExit(f"ci/dylint.py: ci.toml has no [platforms] table at {ci_toml_path}")
+        raise SystemExit(
+            f"ci/dylint.py: ci.toml has no [platforms] table at {ci_toml_path}"
+        )
     out: list[DylintTarget] = []
     for platform_id, entry in sorted(platforms.items()):
         triple = entry["target"]
-        out.append(DylintTarget(platform_id=platform_id, triple=triple, is_host=(platform_id == HOST_PLATFORM_ID)))
+        out.append(
+            DylintTarget(
+                platform_id=platform_id,
+                triple=triple,
+                is_host=(platform_id == HOST_PLATFORM_ID),
+            )
+        )
     if not any(t.is_host for t in out):
-        raise SystemExit(f"ci/dylint.py: ci.toml [platforms] has no '{HOST_PLATFORM_ID}' entry")
+        raise SystemExit(
+            f"ci/dylint.py: ci.toml [platforms] has no '{HOST_PLATFORM_ID}' entry"
+        )
     return out
 
 
@@ -134,23 +145,31 @@ def _check_cmd(target: DylintTarget | None) -> list[str]:
     return cmd
 
 
-def _run_sequential(host: DylintTarget, cross: list[DylintTarget]) -> list[DylintPassResult]:
+def _run_sequential(
+    host: DylintTarget, cross: list[DylintTarget]
+) -> list[DylintPassResult]:
     results: list[DylintPassResult] = []
     host_cmd = _check_cmd(None)
     rc, seconds = _run(host_cmd)
-    results.append(DylintPassResult("sequential", (host.triple,), tuple(host_cmd), seconds, rc))
+    results.append(
+        DylintPassResult("sequential", (host.triple,), tuple(host_cmd), seconds, rc)
+    )
     if rc != 0:
         return results
     for target in cross:
         cmd = _check_cmd(target)
         rc, seconds = _run(cmd)
-        results.append(DylintPassResult("sequential", (target.triple,), tuple(cmd), seconds, rc))
+        results.append(
+            DylintPassResult("sequential", (target.triple,), tuple(cmd), seconds, rc)
+        )
         if rc != 0:
             return results
     return results
 
 
-def _run_multi_target(host: DylintTarget, cross: list[DylintTarget]) -> list[DylintPassResult]:
+def _run_multi_target(
+    host: DylintTarget, cross: list[DylintTarget]
+) -> list[DylintPassResult]:
     """D6 candidate: host artifacts (proc-macros, build scripts) compile
     once for every target in a single invocation, rather than once per
     sequential pass (see the clud macOS-vs-Windows half-cost hint in
@@ -172,19 +191,27 @@ def main(argv: list[str] | None = None) -> int:
     # multi-target is 37% faster on the check passes themselves (55.5s vs
     # 88.8s) and 23% faster end to end (114s vs 148s job total) -- see
     # ci.toml [lint.dylint]'s comment for the full numbers.
-    parser.add_argument("--shape", choices=["sequential", "multi-target"], default="multi-target")
-    parser.add_argument("--results-out", default=None, help="write DylintPassResult[] JSON here")
+    parser.add_argument(
+        "--shape", choices=["sequential", "multi-target"], default="multi-target"
+    )
+    parser.add_argument(
+        "--results-out", default=None, help="write DylintPassResult[] JSON here"
+    )
     args = parser.parse_args(argv)
     repo = Path(args.repo).resolve()
 
     platforms = _load_platforms(repo)
     host = next(t for t in platforms if t.is_host)
     cross = [t for t in platforms if not t.is_host]
-    print(f"dylint lane: host={host.triple} cross={[t.triple for t in cross]} shape={args.shape}")
+    print(
+        f"dylint lane: host={host.triple} cross={[t.triple for t in cross]} shape={args.shape}"
+    )
 
     rc = _prepare_targets(cross)
     if rc != 0:
-        print("ci/dylint.py: soldr dylint prepare failed; see log above", file=sys.stderr)
+        print(
+            "ci/dylint.py: soldr dylint prepare failed; see log above", file=sys.stderr
+        )
         return rc
 
     if args.shape == "multi-target":
@@ -200,7 +227,9 @@ def main(argv: list[str] | None = None) -> int:
             fh.write(f"\n### Dylint lane ({args.shape})\n\n")
             fh.write("| targets | seconds | rc |\n|---|---|---|\n")
             for r in results:
-                fh.write(f"| {', '.join(r.targets)} | {r.seconds:.1f} | {r.returncode} |\n")
+                fh.write(
+                    f"| {', '.join(r.targets)} | {r.seconds:.1f} | {r.returncode} |\n"
+                )
             fh.write(f"\n**total**: {total_seconds:.1f}s\n")
 
     if args.results_out:

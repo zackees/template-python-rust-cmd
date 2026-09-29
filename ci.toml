@@ -2,7 +2,7 @@
 # Nothing here generates YAML: it bounds what the YAML may do and decides what each run selects.
 schema  = 3
 profile = "rust-pypi-app"
-linter  = "zackees/ci.yml@bab8cbac9a78a1b2f0645ed082f54d0e3a23106d"      # the exact ci-lint commit precheck runs
+linter  = "zackees/ci.yml@551d909ad38ac5ccba5bf410fd20b6e8d2b17bed"      # the exact ci-lint commit precheck runs
 
 # ── Platforms ────────────────────────────────────────────────────────────────
 # Every platform compiles on linux (Soldr cross) and executes on its own runner.

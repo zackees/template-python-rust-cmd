@@ -137,7 +137,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: bab8cbac9a78a1b2f0645ed082f54d0e3a23106d
+          ref: 551d909ad38ac5ccba5bf410fd20b6e8d2b17bed
           path: .ci-lint
           persist-credentials: false
 
@@ -160,4 +160,13 @@ jobs:
           # (`actions: read` above), used only by `ci_lint plan --reuse`'s
           # GET-only Actions API calls (ci_lint.reuse.compute_reuse).
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 -m ci_lint plan --repo . --event-name "$EVENT_NAME" --title "$PR_TITLE" --sha "$DISPATCH_SHA" --github-output --reuse
+        # `--event "$GITHUB_EVENT_PATH"` is explicit here even though
+        # `zackees/ci.yml@551d909` (the pin above) already falls back to
+        # reading `GITHUB_EVENT_PATH` itself when `--event` is omitted (the
+        # fix for template-python-rust-cmd#19's silent reuse failure --
+        # this step never passed `--event` before, so reuse's PR-head-SHA
+        # lookup always warned and matched nothing). Passing it explicitly
+        # keeps the dependency visible in this file instead of only inside
+        # ci-lint's fallback, and behaves identically under `act` (which
+        # also sets `GITHUB_EVENT_PATH`, per zackees/ci.yml#6 round-4B).
+        run: python3 -m ci_lint plan --repo . --event-name "$EVENT_NAME" --title "$PR_TITLE" --sha "$DISPATCH_SHA" --event "$GITHUB_EVENT_PATH" --github-output --reuse

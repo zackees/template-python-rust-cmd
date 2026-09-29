@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # src/template_python_rust_cmd/platforms/README.md ("zero runtime
 # dependencies").
 sys.path.insert(0, str(ROOT / "src"))
+# pylint: disable-next=wrong-import-position
 from template_python_rust_cmd.platforms import is_windows  # noqa: E402
 
 # The one declared test binary that needs the actual compiled CLI at

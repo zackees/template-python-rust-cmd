@@ -24,7 +24,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# pylint: disable-next=wrong-import-position
 from ci.localrun.act_orchestrate import run_act  # noqa: E402
+
+# pylint: disable-next=wrong-import-position
 from ci.localrun.precheck import run_precheck  # noqa: E402
 
 
@@ -37,6 +40,11 @@ def _cmd_act(args: argparse.Namespace) -> int:
 
 
 def _cmd_act_inner(_args: argparse.Namespace) -> int:
+    # Deliberately lazy: act_inner.py is only ever meant to run INSIDE the
+    # bosn act-stack container (its own docstring), and importing it
+    # eagerly at module load would pull that container-only code path
+    # into every `ci/local.py` invocation, including plain `precheck`.
+    # pylint: disable-next=import-outside-toplevel
     from ci.localrun.act_inner import main as act_inner_main
 
     return act_inner_main()

@@ -28,8 +28,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from ci.localrun.ci_toml_lite import CiTomlLiteError, read_local_section
 from ci.localrun.ci_lint_checkout import CiLintCheckoutError, ensure_ci_lint
+from ci.localrun.ci_toml_lite import CiTomlLiteError, read_local_section
 from ci.localrun.event import EventPlanError, write_act_event
 from ci.localrun.precheck import run_precheck
 
