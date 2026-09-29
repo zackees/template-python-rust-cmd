@@ -39,6 +39,21 @@ destination = "/root/.cache/act"
 scope = "machine"
 destination = "/root/.cache/actcache"
 
+# Round-4B act parity, part 2: `.ci-lint/` (the ci.toml-pinned zackees/
+# ci.yml checkout) is gitignored, so act's default job-container copy
+# (git-aware; drops every gitignored path) never carries it into a job
+# container -- confirmed empirically (round-4B worker report). This
+# volume is populated by `act_inner.py` at container-start (a plain git
+# clone/fetch, same as `ci_lint_checkout.py`'s host-side one, just
+# pointed here instead of at `repo_root/.ci-lint`) and mounted into each
+# JOB container by Docker volume name (`bosn-m-template-act-ci-lint` --
+# see ci/localrun/act_inner.py's `--container-options`), never by path,
+# since a path-based mount (`--bind`) does not survive the nesting (this
+# stack's own container is itself not the true Docker host).
+[stack.act.volumes.ci-lint]
+scope = "machine"
+destination = "/root/.cache/ci-lint"
+
 [task.act-run]
 stack = "act"
 cmd = "python3 /work/ci/local.py act-inner"

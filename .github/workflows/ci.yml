@@ -378,7 +378,20 @@ jobs:
   platform-run:
     name: platform-run (${{ matrix.lane.id }}) [${{ fromJSON(needs.precheck.outputs.lane_digests_json)[format('platform:{0}', matrix.lane.id)] }}]
     needs: [precheck, platform-build]
-    if: needs.platform-build.result == 'success'
+    # `!cancelled() && !failure() && ...`, not the bare comparison alone:
+    # observed empirically on a real run (36506934489, ci.yml#6 round-4B
+    # worker report) that a bare `needs.platform-build.result ==
+    # 'success'` -- with no explicit status-check function in the
+    # expression -- skipped `platform-run` even though `platform-build`
+    # had just succeeded, in the SAME run where `fast`/`dylint` were
+    # title-edit-reused (skipped). GitHub Actions auto-prepends
+    # `success()` to a job `if:` that contains no status-check function
+    # of its own, and `success()` is documented to fail when ANY job
+    # anywhere earlier in the run's dependency graph is not a `success`
+    # -- including a job this one doesn't directly `need:` at all
+    # (`cache-maint`, skipped on every PR run by design). Same fix as
+    # `fast`/`dylint`/`platform-build`'s identical-shaped conditions.
+    if: ${{ !cancelled() && !failure() && needs.platform-build.result == 'success' }}
     runs-on: ${{ matrix.lane.runs_on }}
     timeout-minutes: 15
     permissions:

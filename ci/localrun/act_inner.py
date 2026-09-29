@@ -13,19 +13,23 @@ sibling job containers it creates, then runs the ACT-001 cache audit
 against the machine-scoped cache-server volume and writes
 `.act-local/result.json` for the host step to read back.
 
-Known gap (see README "GITHUB_TOKEN and cross-repo checkouts"):
-`ci.yml`'s `Checkout ci-lint (zackees/ci.yml, pinned)` step uses
-`actions/checkout` with an explicit `repository:` override, which
-requires a non-empty `token` input even for a public repo -- act does
-not auto-populate `github.token` the way real GitHub Actions does. This
-tool never fetches, embeds, prints, or writes a credential anywhere
-(worker contract: no secrets). The supported opt-in is act's own
-`--secret-file` default (`.secrets` in the working directory, i.e.
-`/work/.secrets` -- gitignored, and never created by this tool): a
-developer who wants a full local run adds their own token there, and
-`act` (invoked with no `--secret-file` override below, so its stock
-default applies) picks it up automatically, exposing it as
-`${{ secrets.GITHUB_TOKEN }}` -- exactly what `actions/checkout` reads.
+Resolved gap (round-4B act parity; see README "GITHUB_TOKEN and
+cross-repo checkouts" for the history): `ci.yml`/`ci-precheck.yml`'s own
+"Checkout ci-lint (zackees/ci.yml, pinned)" steps are skipped under act
+(`if: env.ACT != 'true'`) instead of hitting `actions/checkout`'s
+`repository:`-override token requirement (act does not auto-populate
+`github.token`). The pinned checkout this tool provides instead --
+`ensure_ci_lint` into the machine-scoped `ci-lint` volume below, mounted
+by NAME into each job container -- needs no token, since it is a plain
+anonymous git clone of a public repo, same as the host-side one
+`ci_lint_checkout.py` already does for `python3 ci/local.py precheck`.
+This tool still never fetches, embeds, prints, or writes a credential
+anywhere (worker contract: no secrets); a job that needs some OTHER
+cross-repo action with real auth still falls back to act's documented
+`--secret-file` opt-in (`.secrets` in the working directory, i.e.
+`/work/.secrets` -- gitignored, never created by this tool, and this
+module's own `act` invocation below sets no `--secret-file` override,
+so act's stock default applies automatically).
 """
 
 from __future__ import annotations
@@ -38,12 +42,21 @@ from pathlib import Path
 
 from ci.localrun.cache_audit import audit as audit_cache
 from ci.localrun.cache_audit import render as render_audit
+from ci.localrun.ci_lint_checkout import CiLintCheckoutError, ensure_ci_lint
 from ci.localrun.ci_toml_lite import CiTomlLiteError, read_cache_section
 from ci.localrun.sizes import parse_size
 
 WORK = Path("/work")
 ACTION_CACHE = Path("/root/.cache/act")
 CACHE_SERVER = Path("/root/.cache/actcache")
+# This container's OWN mount point for bosn.toml's `[stack.act.volumes.
+# ci-lint]` -- the SAME named Docker volume also gets mounted, by name,
+# into each job container at /work/.ci-lint (see `_run_lane`'s
+# `--container-options`); Docker volumes are daemon-global by name, so
+# the two different mount PATHS (here vs. inside a job container) share
+# the one underlying volume regardless of which container is "outer".
+CI_LINT_VOLUME_MOUNT = Path("/root/.cache/ci-lint")
+CI_LINT_VOLUME_NAME = "bosn-m-template-act-ci-lint"
 ARTIFACT_SERVER = Path("/tmp/act-artifacts")
 DOCKERFILE_RUNNER = WORK / "ci" / "docker" / "act" / "Dockerfile.runner"
 WORKFLOW = ".github/workflows/ci.yml"
@@ -99,12 +112,17 @@ def _run_lane(
         "--artifact-server-path",
         str(ARTIFACT_SERVER),
         "--container-options",
-        f"--init --label template.act-run={run_id}",
+        # `-v NAME:/work/.ci-lint`: mounts the ci-lint volume by NAME
+        # (not path -- see CI_LINT_VOLUME_MOUNT's comment) at exactly the
+        # path `ci.toml`'s `linter`-pinned checkout normally lands at, so
+        # every `PYTHONPATH: .ci-lint`-relative `run:` step works
+        # unchanged under act.
+        f"--init --label template.act-run={run_id} -v {CI_LINT_VOLUME_NAME}:/work/.ci-lint",
     ]
     # No --secret-file override: act's own default (".secrets" in this
     # process's cwd, i.e. /work/.secrets) applies. Anonymous by default --
     # this tool never creates, reads, or logs that file. See the module
-    # docstring's "Known gap" for what it's for.
+    # docstring's "Resolved gap" note above.
     start = time.monotonic()
     result = subprocess.run(cmd, cwd=str(WORK), check=False)
     return time.monotonic() - start, result.returncode
@@ -142,6 +160,23 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result["runner_image_build_seconds"] = _ensure_runner_image(runner_tag)
     except RuntimeError as exc:
+        print(f"[act-inner] {exc}", file=sys.stderr)
+        result["ok"] = False
+        (WORK / ".act-local" / "result.json").write_text(
+            json.dumps(result, indent=2), encoding="utf-8"
+        )
+        return 1
+
+    try:
+        ci_lint_checkout = ensure_ci_lint(WORK, target_dir=CI_LINT_VOLUME_MOUNT)
+        print(
+            f"[act-inner] ci-lint volume ({CI_LINT_VOLUME_NAME}) at "
+            f"{ci_lint_checkout.sha[:12]}, "
+            f"{'cold clone/fetch' if ci_lint_checkout.was_cold else 'warm, no network'} "
+            f"({ci_lint_checkout.seconds:.2f}s)",
+            file=sys.stderr,
+        )
+    except CiLintCheckoutError as exc:
         print(f"[act-inner] {exc}", file=sys.stderr)
         result["ok"] = False
         (WORK / ".act-local" / "result.json").write_text(
