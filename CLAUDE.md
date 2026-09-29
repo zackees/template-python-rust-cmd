@@ -13,7 +13,7 @@ in both directions.
 
 ## Essential Rules
 
-1. **Always run gates through `./ci.sh <gate>`.** Never paste `soldr
+1. **Always run gates through `./ci.py <gate>`.** Never paste `soldr
    cargo clippy ...` or `uv run python ci/gates/...` directly into a
    command. The `ci/hooks/tool_guard.py` PreToolUse hook blocks bare
    forms and tells you why.
@@ -24,7 +24,7 @@ in both directions.
    convention; `soldr` invocations always pass `tool_guard.py`.
 3. **Reserve full `uv run`/`uv sync` (without `--no-project --script`)
    for named build entry points: `./test`, `./install`.** Everything
-   else needs the protective flags — see `ci.sh` for the rationale.
+   else needs the protective flags — see `ci.py` for the rationale.
 4. **Every directory must have a `README.md` of ≥ 50 lines.** Enforced
    by `ci/hooks/readme_guard.py` on every edit.
 5. **Source files ≤ 1000 lines (warn) / ≤ 1500 (fail).** Enforced both
@@ -33,7 +33,7 @@ in both directions.
    `foo.rs` → `foo/mod.rs` + per-domain submodules, with `pub use`
    re-exports in `mod.rs` so the public path is unchanged.
 6. **Logic lives in Python under `ci/`; YAML stays thin.** Every future
-   CI step is a single line — `run: ./ci.sh <gate>` or `run: python3
+   CI step is a single line — `run: ./ci.py <gate>` or `run: python3
    ci/<script>.py ...` — never multi-line shell. (There is no
    `.github/workflows/ci.yml` on this branch right now — see "CI status
    on this branch" below.)
@@ -63,7 +63,7 @@ platform's own runner) → `ci-ok` (the one required check, `if:
 always()`, calls `ci_lint gate --reuse ... --event ...`). Every job's
 display name carries its `ci_lint`-computed lane digest
 (`fast [<digest>]`, `platform-run (<id>) [<digest>]`), which is also how
-title-edit reuse matches an already-green job. `./ci.sh all` still runs
+title-edit reuse matches an already-green job. `./ci.py all` still runs
 locally and is what an agent should run before pushing — see "Commands"
 below for the exact local precheck command.
 
@@ -82,9 +82,9 @@ bounds what the workflow may do and how it plans each run.
 
 ```bash
 ./install                # verify uv + soldr + pinned toolchain (no wheel build)
-./ci.sh fmt               # one gate
-./ci.sh all               # every gate, continue past failures
-./ci.sh --list             # show registered gates
+./ci.py fmt               # one gate
+./ci.py all               # every gate, continue past failures
+./ci.py --list             # show registered gates
 ./test                    # soldr cargo test + uv sync (soldr backend) + pytest
 ./lint                    # convenience: fmt + clippy + ruff
 ```

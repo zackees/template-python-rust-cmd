@@ -5,7 +5,7 @@ one line calling `python3 ci/fast.py <subcommand>` (CLAUDE.md rule 6 /
 `GEN-005`); this module holds the logic so the workflow YAML stays thin.
 
 Decisions this round made (see the PR body / worker report for evidence):
-  - fmt and clippy stay separate soldr invocations (`./ci.sh fmt`, `./ci.sh
+  - fmt and clippy stay separate soldr invocations (`./ci.py fmt`, `./ci.py
     clippy`), NOT folded into `soldr ci-test`'s bundled DAG. `soldr ci-test`
     also runs a host-only Dylint pass as part of that DAG; running it here
     would duplicate the dedicated `dylint` job's host pass with no shared

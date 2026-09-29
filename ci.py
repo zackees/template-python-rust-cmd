@@ -6,9 +6,9 @@
 """Canonical CI gate dispatcher.
 
 Usage:
-    ./ci.sh <gate>     # run one gate
-    ./ci.sh all        # run every gate, continue past failures
-    ./ci.sh --list     # show registered gates in order
+    ./ci.py <gate>     # run one gate
+    ./ci.py all        # run every gate, continue past failures
+    ./ci.py --list     # show registered gates in order
 
 Every gate is `ci/gates/<name>.py` exposing `def run() -> int`.
 GATE_ORDER below is the canonical sequence; `all` runs them in that
@@ -17,7 +17,7 @@ order with continue-past-failure semantics, except that a failing
 tree only produce noise).
 
 See zackees/zccache#835 rule 6 for the rationale: keep ci.yml thin,
-push logic to Python, lock the contract so `./ci.sh fmt` on a laptop
+push logic to Python, lock the contract so `./ci.py fmt` on a laptop
 runs the exact same bytes as the GHA step.
 """
 
@@ -96,7 +96,7 @@ def run_all() -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="ci.sh", description=__doc__)
+    parser = argparse.ArgumentParser(prog="ci.py", description=__doc__)
     parser.add_argument(
         "gate",
         nargs="?",
@@ -120,7 +120,7 @@ def main() -> int:
 
     if args.gate not in GATE_ORDER:
         print(
-            f"Unknown gate: {args.gate}. Run `./ci.sh --list` for the registered gates.",
+            f"Unknown gate: {args.gate}. Run `./ci.py --list` for the registered gates.",
             file=sys.stderr,
         )
         return 2

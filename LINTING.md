@@ -4,16 +4,16 @@ The CI gates that lint the repo, in canonical order.
 
 ## Rust
 
-Two gates, both via `./ci.sh`, both through `soldr` — never bare
+Two gates, both via `./ci.py`, both through `soldr` — never bare
 `cargo` (see `ci.toml`'s `[allow] tools` and
 [zackees/ci.yml#6](https://github.com/zackees/ci.yml/issues/6)):
 
 | Gate              | Command                                                                |
 |-------------------|--------------------------------------------------------------------------|
-| `./ci.sh fmt`     | `soldr cargo fmt --all -- --check`                                     |
-| `./ci.sh clippy`  | `soldr cargo clippy --workspace --all-targets --locked -- -D warnings` |
+| `./ci.py fmt`     | `soldr cargo fmt --all -- --check`                                     |
+| `./ci.py clippy`  | `soldr cargo clippy --workspace --all-targets --locked -- -D warnings` |
 
-Both run locally today via `./ci.sh all`. There is no
+Both run locally today via `./ci.py all`. There is no
 `.github/workflows/ci.yml` on this branch right now — see
 `docs/ARCHITECTURE.md` — a later round wires these into a workflow
 planned by `ci.toml`. Failing format is fixable with `soldr cargo fmt
@@ -26,7 +26,7 @@ One gate covering lint + format:
 
 | Gate              | Command                                                                |
 |-------------------|--------------------------------------------------------------------------|
-| `./ci.sh ruff`    | `ruff check` + `ruff format --check` over `src tests ci action ci.py lint test install` |
+| `./ci.py ruff`    | `ruff check` + `ruff format --check` over `src tests ci action ci.py lint test install` |
 
 `ruff` is provisioned at script-time via `uv run --no-project --with
 ruff==<pin>`, so it never triggers a soldr-backend wheel build to lint
@@ -36,7 +36,7 @@ a few `.py` files.
 
 | Gate              | Threshold                          |
 |-------------------|--------------------------------------|
-| `./ci.sh loc`     | warn > 1000, fail > 1500 (per file)|
+| `./ci.py loc`     | warn > 1000, fail > 1500 (per file)|
 
 Split convention printed on every failure:
 `foo.rs` → `foo/mod.rs` + per-domain submodules, with `pub use`

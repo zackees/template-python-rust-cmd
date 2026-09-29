@@ -8,7 +8,7 @@ Rejects:
   - Bare `python` / `python3` — must go through `uv run`.
   - Bare `pip` / `pip3` — must go through `uv pip`.
   - `uv run` *without* `--no-project --script` for invocations outside
-    the named build entry points. The whole point of `./ci.sh`'s
+    the named build entry points. The whole point of `./ci.py`'s
     `--no-project --script` discipline (rule 2 of zackees/zccache#835)
     is to avoid the maturin auto-build trap when running gates; an
     agent that pastes a snippet from chat needs the protective flags
@@ -305,7 +305,7 @@ def _check_segment(seg: str) -> tuple[str, str] | None:
                 return None
             return (
                 "uv run",
-                "Use `./ci.sh <gate>` for lint/gate invocations, or run "
+                "Use `./ci.py <gate>` for lint/gate invocations, or run "
                 "your build through a named entry point (./test, ./install). "
                 "Bare `uv run` walks up to pyproject.toml "
                 "and triggers the wheel build (soldr PEP 517 backend) "
@@ -319,7 +319,7 @@ def _check_segment(seg: str) -> tuple[str, str] | None:
     if head in RUST_TOOLS:
         return (
             head,
-            f"Use `./ci.sh <gate>` (clippy/fmt/build/test) or route through a named build entry point. Bare `{head}` bypasses the workspace's pinned toolchain configuration.",
+            f"Use `./ci.py <gate>` (clippy/fmt/build/test) or route through a named build entry point. Bare `{head}` bypasses the workspace's pinned toolchain configuration.",
         )
 
     if head in PYTHON_TOOLS:

@@ -29,7 +29,8 @@ Load-bearing pieces:
    packaging shape, suites, flows, tags, cache families. Does not
    generate YAML — a future `ci-lint` (built in `zackees/ci.yml`)
    checks the repo against it and computes each run's plan.
-2. **`./ci.sh` + `ci.py`.** Bash wrapper + PEP 723 dispatcher. Every
+2. **`./ci.py`.** PEP 723 dispatcher, directly executable via its
+   `#!/usr/bin/env -S uv run --no-project --script` shebang. Every
    gate invocation goes through here so the `--no-project --script`
    flag combo (which suppresses the soldr-backend auto-build trap)
    lives in one place.
@@ -43,7 +44,7 @@ Load-bearing pieces:
    `macos-13` runner for 24h on every run and never passed. A later
    round adds `.github/workflows/ci.yml` (the only trigger-bearing
    workflow) + `ci-precheck.yml` (workflow_call only), planned by
-   `ci.toml`. Until then, `./ci.sh all` locally is the equivalent.
+   `ci.toml`. Until then, `./ci.py all` locally is the equivalent.
 6. **`action.yml` + `action/cleanup/action.yml`.** Composite action
    contract. Validated by `ci/gates/action_yaml.py` (structural) +
    `ci/gates/action_surface.py` (runtime binary surface match). Every

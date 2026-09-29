@@ -62,9 +62,9 @@ def main() -> int:
         return rc
 
     print("\nNext steps:")
-    print("  ./ci.sh all       # run every gate")
+    print("  ./ci.py all       # run every gate")
     print("  ./test            # soldr cargo test + uv sync + pytest")
-    print("  ./ci.sh --list    # show registered gates")
+    print("  ./ci.py --list    # show registered gates")
     return 0
 
 

@@ -42,9 +42,10 @@ When growing the scaffold, the load-bearing decisions are:
   with shebang `#!/usr/bin/env -S uv run --no-project --script` (PEP
   723 header); add its name to
   `ci/hooks/tool_guard.py::BUILD_ENTRY_POINTS` so the hook knows it's
-  allowed to use full `uv run`/`uv sync`. New shell scripts are not
-  allowed — `ci.sh` is the one owner-approved exception (see
-  `ci.toml`'s `[[exceptions]]`).
+  allowed to use full `uv run`/`uv sync`. No `.sh`/`.ps1`/`.bat`/`.cmd`
+  files or bash-shebang scripts are allowed anywhere in the repo
+  (`ci_lint`'s `GEN-005` shell budget enforces this with zero
+  exceptions).
 
 ## Invariants to preserve
 

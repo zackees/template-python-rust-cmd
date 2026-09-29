@@ -81,7 +81,7 @@ upstream. Re-attempt the single-`uv build` path once that issue closes.
 
 1. Confirm versions match in `pyproject.toml::project.version` and
    `Cargo.toml::workspace.package.version`.
-2. `./ci.sh all` passes locally.
+2. `./ci.py all` passes locally.
 3. Build the sdist and wheel through the real backend:
    ```
    uv build
@@ -124,8 +124,8 @@ Before tagging, run the two action gates to confirm the composite
 action contract still holds:
 
 ```
-./ci.sh action_yaml
-./ci.sh action_surface
+./ci.py action_yaml
+./ci.py action_surface
 ```
 
 These are fast (<5 s) and catch the typo class of regressions where

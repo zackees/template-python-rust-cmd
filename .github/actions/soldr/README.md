@@ -32,7 +32,7 @@ action's own `inputs:`, so a caller cannot override them even by accident.
   version comment, never a branch or moving tag.
 - `version: "0.9.25"` (the `soldr` binary itself) matches
   `pyproject.toml`'s `requires = ["soldr==0.9.25"]` — the PEP 517 backend's
-  own pin — so the CLI used by `./ci.sh`/CI steps and the backend used by
+  own pin — so the CLI used by `./ci.py`/CI steps and the backend used by
   `uv build`/`uv sync` are the exact same Soldr release.
 
 ## Dylint cache fix validation (setup-soldr#538, v0.9.81)

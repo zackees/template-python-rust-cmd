@@ -18,7 +18,7 @@ defined in `ci/hooks/`.
 All hooks are invoked through `uv run --no-project --script`, the
 same discipline the rest of the repo follows. This avoids the maturin
 auto-build trap that would otherwise fire on every hook execution
-(see `ci.sh` for the rationale).
+(see `ci.py` for the rationale).
 
 ## Why hooks live in the repo, not user settings
 

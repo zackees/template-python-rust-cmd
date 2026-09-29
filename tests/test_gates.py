@@ -6,7 +6,7 @@ Asserts that every gate registered in `ci.py::GATE_ORDER`:
   2. exposes a zero-arg `run()`,
   3. has `run()` annotated to return an int.
 
-This does NOT execute the gates — that's what `./ci.sh all` is for. The
+This does NOT execute the gates — that's what `./ci.py all` is for. The
 contract test exists so future gate additions can't accidentally ship a
 broken signature; a developer who registers a new gate but forgets the
 `def run() -> int` shape sees the failure here instead of mid-CI.

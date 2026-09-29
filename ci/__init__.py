@@ -2,7 +2,7 @@
 
 Two structured sub-packages:
 
-  - `ci.gates.*` — workspace-state checks invoked by `./ci.sh <gate>`;
+  - `ci.gates.*` — workspace-state checks invoked by `./ci.py <gate>`;
     runs on every CI cycle and on developer laptops. Every Rust/wheel
     command here goes through `soldr` (`soldr cargo ...`, `soldr wheel`,
     the soldr PEP 517 backend via `uv build`/`uv sync`) — never bare

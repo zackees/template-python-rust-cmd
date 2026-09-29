@@ -59,4 +59,4 @@ Unit tests live next to their code under `#[cfg(test)] mod tests` —
 `template-core:lib` in `ci.toml`'s `[rust.tests].binaries`. `[lib]
 doctest = false`: this crate has no public-facing doctests of its own;
 `template`'s doctests cover the re-exported API. Run with `soldr cargo
-test --workspace --locked` (which `./ci.sh test` / `./test` call).
+test --workspace --locked` (which `./ci.py test` / `./test` call).

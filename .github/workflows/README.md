@@ -36,7 +36,7 @@ families are declared there, not hand-written into YAML.
 ## Local equivalent
 
 ```
-./ci.sh all
+./ci.py all
 PYTHONPATH=<ci.yml checkout> uv run --no-project --with pyyaml python3 -m ci_lint precheck --repo . --local
 ```
 

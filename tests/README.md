@@ -20,7 +20,7 @@ Python-side test suite. Picked up by `pytest` per the configuration in
 - Rust integration tests live under `crates/template/tests/api/` and
   `crates/template-cli/tests/cli/`.
 
-Both run as part of `./ci.sh test` (which calls `soldr cargo test
+Both run as part of `./ci.py test` (which calls `soldr cargo test
 --workspace --locked`, then `uv sync`, then `pytest`).
 
 ## Conventions

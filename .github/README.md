@@ -2,7 +2,7 @@
 
 GitHub-specific metadata. Kept deliberately thin per
 [zackees/zccache#835 rule 6](https://github.com/zackees/zccache/issues/835):
-every CI step is a single line — `run: ./ci.sh <gate>` or `run:
+every CI step is a single line — `run: ./ci.py <gate>` or `run:
 python3 ci/<script>.py ...` — never multi-line shell. The actual logic
 lives in `ci/gates/*.py` and `ci/{fast,dylint,ci_ok}.py` so the same
 bytes run on a developer laptop.
@@ -34,7 +34,7 @@ ever succeeded). Round 2 added it back, this time generated to match
 - `ci.toml` at the repo root is the exact platform/suite/tag/cache
   contract those two workflow files implement — nothing is hand-written
   into YAML that `ci.toml` already declares.
-- `./ci.sh all` locally runs the same gate set the `fast` job's fmt/
+- `./ci.py all` locally runs the same gate set the `fast` job's fmt/
   clippy steps call.
 - `python3 -m ci_lint precheck --repo . --local` is the same check
   `ci-precheck.yml` runs, and this repo's agent Stop-hook / pre-push gate.
@@ -61,7 +61,7 @@ have to know which gates/suites/lanes exist, never what they do.
 
 ## Adding a new gate or lane
 
-1. Gate (runs on every `./ci.sh all` too): write `ci/gates/<name>.py`
+1. Gate (runs on every `./ci.py all` too): write `ci/gates/<name>.py`
    with `def run() -> int`, using `soldr` for any Rust/wheel command, and
    register it in `ci.py::GATE_ORDER`.
 2. CI-only orchestration (a new `fast`/`dylint` step, not a developer
