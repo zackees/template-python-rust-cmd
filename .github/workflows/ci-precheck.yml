@@ -94,6 +94,15 @@ on:
       dylint_reused:
         description: '"true"/"false" -- whether the dylint lane is a verified reuse candidate.'
         value: ${{ jobs.precheck.outputs.dylint_reused }}
+      cache_save:
+        description: >-
+          "true"/"false" = (plan.cache_mode == "write") -- round-4B. Every
+          writer-flow-only cache save (the setup-soldr wrapper's
+          `save-cache` passthrough, every `astral-sh/setup-uv`'s own
+          `save-cache`) binds to this instead of a literal, satisfying
+          `[allow].setup-soldr.require`/`[allow].setup-uv.require`'s
+          `"plan"` value (`CACHE-009`/`CACHE-003`).
+        value: ${{ jobs.precheck.outputs.cache_save }}
 
 permissions:
   contents: read
@@ -129,6 +138,7 @@ jobs:
       platform_lanes_todo_json: ${{ steps.plan.outputs.platform_lanes_todo_json }}
       fast_reused: ${{ steps.plan.outputs.fast_reused }}
       dylint_reused: ${{ steps.plan.outputs.dylint_reused }}
+      cache_save: ${{ steps.plan.outputs.cache_save }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -137,7 +147,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551d909ad38ac5ccba5bf410fd20b6e8d2b17bed
+          ref: 31369f521ed524370396cad3a5717abd6762d4dc
           path: .ci-lint
           persist-credentials: false
 

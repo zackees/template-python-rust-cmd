@@ -45,15 +45,64 @@ jobs:
       # permissions are the caller's grant, intersected with the
       # callee's own request) -- needed for `ci_lint plan --reuse`'s
       # title-edit reuse lookup (GET .../actions/runs, GET
-      # .../actions/runs/{id}/jobs). See ci.toml [[exceptions]] for the
-      # recorded SEC-002 exception this requires (ci-lint's SEC-002, as
-      # pinned, does not yet distinguish `actions: read` from a wider
-      # grant).
+      # .../actions/runs/{id}/jobs). Free as of round-4B (zackees/ci.yml
+      # @31369f5): `actions: read` no longer needs a ci.toml
+      # `[[exceptions]]` entry, top-level or per-job.
       actions: read
     with:
       pr-title: ${{ github.event.pull_request.title || '' }}
       event-name: ${{ github.event_name }}
       dispatch-sha: ${{ github.event.inputs.sha || '' }}
+
+  # Round-4B (ci.yml#6 §6, "pre-prune before writing"). Writer flows only
+  # (`plan.cache_mode == "write"`: main push, nightly) -- a PR run skips
+  # this job outright (`if:` below), and `fast`/`dylint`/`platform-build`
+  # tolerate that skip (`!cancelled() && !failure()`, not a bare
+  # `needs.cache-maint.result == 'success'`, so an ordinary PR run is
+  # unaffected). `actions: write` is the one non-free grant this repo
+  # uses (ci.toml [allow].permissions."actions: write" = ["cache-maint"]).
+  cache-maint:
+    name: cache-maint
+    needs: precheck
+    if: needs.precheck.outputs.cache_save == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      lockfile_changed: ${{ steps.lockfile.outputs.changed }}
+    steps:
+      - name: Checkout (fetch-depth 2 -- lockfile_changed.py needs HEAD^)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: 31369f521ed524370396cad3a5717abd6762d4dc
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Did Cargo.lock/uv.lock/rust-toolchain.toml change vs the parent commit?
+        id: lockfile
+        run: python3 ci/lockfile_changed.py
+
+      - name: Pre-prune (forecast the lockfile-change peak; prune if over budget)
+        if: steps.lockfile.outputs.changed == 'true'
+        env:
+          PYTHONPATH: .ci-lint
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -m ci_lint cache preprune --repo . --lockfile-changed --max-deletes 50
+
+      - name: Janitor (nightly only -- CACHE-001/003/005/006/009 + stale entries)
+        if: github.event_name == 'schedule'
+        env:
+          PYTHONPATH: .ci-lint
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -m ci_lint cache janitor --repo . --max-deletes 50
 
   # Job id MUST be exactly "fast" -- ci_lint gate's required-job-id
   # convention (orchestrator decision on zackees/ci.yml PR #11: precheck,
@@ -64,8 +113,15 @@ jobs:
   # that live before ever accepting this "skipped" as a pass.
   fast:
     name: fast [${{ fromJSON(needs.precheck.outputs.lane_digests_json).fast }}]
-    needs: precheck
-    if: needs.precheck.outputs.fast_reused != 'true'
+    needs: [precheck, cache-maint]
+    # `!cancelled() && !failure()`, not a bare default/`always()`: runs
+    # unless precheck or cache-maint actually FAILED (still skips if
+    # either was cancelled), but tolerates cache-maint's normal SKIP on
+    # every PR run (round-4B: cache-maint's own `if:` only fires on
+    # writer flows) -- the plain default `if:` (implicit `success()`)
+    # would otherwise skip `fast` on every PR too, since `success()` is
+    # false when any `needs:` entry is skipped, not just failed.
+    if: ${{ !cancelled() && !failure() && needs.precheck.outputs.fast_reused != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -83,7 +139,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551d909ad38ac5ccba5bf410fd20b6e8d2b17bed
+          ref: 31369f521ed524370396cad3a5717abd6762d4dc
           path: .ci-lint
           persist-credentials: false
 
@@ -91,9 +147,12 @@ jobs:
         uses: ./.github/actions/soldr
         with:
           ci-tests: "true"
+          save-cache: ${{ needs.precheck.outputs.cache_save }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          save-cache: ${{ needs.precheck.outputs.cache_save }}
 
       - name: fmt
         run: ./ci.sh fmt
@@ -101,8 +160,21 @@ jobs:
       - name: clippy
         run: ./ci.sh clippy
 
-      - name: ruff (check + format, GEN-004)
-        run: ./ci.sh ruff
+      # ci-lint's GEN-004 scans this job's `run:` lines by their literal
+      # shell tokens (a `python3 ci/<x>.py` line is followed one level
+      # into that script's own literal `subprocess.run([...])` argv --
+      # ci/gates/ruff.py's variable-built `cmd` list, and its pinned
+      # RUFF_PIN constant, are each NOT a literal at that call site, so
+      # GEN-004 cannot see through `./ci.sh ruff`). These two steps are
+      # therefore the literal, GEN-004-visible form; `./ci.sh ruff`
+      # (ci/gates/ruff.py, same RUFF_PIN/targets) stays available for
+      # local dev (`./ci.sh all`) and must be kept in sync by hand if
+      # either changes.
+      - name: ruff check (GEN-004; import-sort I rules via pyproject.toml)
+        run: uv run --no-project --with ruff==0.15.18 ruff check --config pyproject.toml src tests ci action ci.py lint test install
+
+      - name: ruff format --check (GEN-004)
+        run: uv run --no-project --with ruff==0.15.18 ruff format --check --config pyproject.toml src tests ci action ci.py lint test install
 
       - name: Build + capture compiler-artifact JSON
         run: python3 ci/fast.py build-json --out ${{ runner.temp }}/cargo-messages.jsonl
@@ -117,14 +189,32 @@ jobs:
           PYTHONPATH: .ci-lint
         run: python3 -m ci_lint tests size --repo . --artifacts ${{ runner.temp }}/cargo-messages.jsonl
 
-      - name: Run Rust tests
+      # Round-4B suite gating: `[no-test]` (ci.toml [tags].no-test removes
+      # EVERY suite, including the required `unit`/`smoke` ones -- that
+      # sentinel removal is exactly what makes the run non-mergeable, per
+      # `ci_lint gate`) skips these two test steps. Packaging (build,
+      # wheel, install, smoke) and lint/Dylint are NOT suite-gated and
+      # always run -- an un-mergeable `[no-test]` run still proves the
+      # artifact builds.
+      - name: Run Rust tests (unit suite, when selected)
+        if: contains(fromJSON(needs.precheck.outputs.fast_suites_json), 'unit')
         run: python3 ci/fast.py rust-test
 
-      - name: Run Python tests (unit suite)
-        run: python3 ci/fast.py python-test
+      # Unconditional (unlike the pytest run below): `_native` must be
+      # built for `pylint`'s `--extension-pkg-allow-list` regardless of
+      # whether the `unit` suite itself is selected.
+      - name: Sync Python env (builds `_native` for pylint + packaging)
+        run: python3 ci/fast.py python-sync
 
-      - name: pylint (GEN-004; after python-test so `_native` is built)
-        run: ./ci.sh pylint
+      # Same GEN-004 note as the ruff steps above: this is the literal,
+      # AST-visible form; `./ci.sh pylint` (ci/gates/pylint.py, same
+      # PYLINT_PIN/targets/allow-list) stays available for local dev.
+      - name: pylint (GEN-004)
+        run: uv run --no-project --with pylint==4.0.9 --with pytest python3 -m pylint src ci tests action --extension-pkg-allow-list=template_python_rust_cmd._native
+
+      - name: Run Python tests (unit suite, when selected)
+        if: contains(fromJSON(needs.precheck.outputs.fast_suites_json), 'unit')
+        run: python3 ci/fast.py python-test
 
       - name: Integration suite (ci.toml [suites].integration, when selected)
         if: contains(fromJSON(needs.precheck.outputs.fast_suites_json), 'integration')
@@ -150,8 +240,9 @@ jobs:
 
   dylint:
     name: dylint [${{ fromJSON(needs.precheck.outputs.lane_digests_json).dylint }}]
-    needs: precheck
-    if: needs.precheck.outputs.dylint_reused != 'true'
+    needs: [precheck, cache-maint]
+    # See `fast`'s identical condition comment above.
+    if: ${{ !cancelled() && !failure() && needs.precheck.outputs.dylint_reused != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -174,6 +265,7 @@ jobs:
           prebuild-deps: "none"
           verify-compile-cache: "warn"
           cache-key-suffix: "dylint"
+          save-cache: ${{ needs.precheck.outputs.cache_save }}
 
       - name: Dylint -- host + every declared cross target
         run: python3 ci/dylint.py --shape multi-target --results-out ${{ runner.temp }}/dylint-results.json
@@ -187,8 +279,9 @@ jobs:
   # target's own OS (zackees/ci.yml#6 §2/§3, D4).
   platform-build:
     name: platform-build (${{ matrix.lane.id }}) [${{ fromJSON(needs.precheck.outputs.lane_digests_json)[format('platform:{0}', matrix.lane.id)] }}]
-    needs: precheck
-    if: needs.precheck.outputs.platform_lanes_todo_json != '[]'
+    needs: [precheck, cache-maint]
+    # See `fast`'s identical condition comment above.
+    if: ${{ !cancelled() && !failure() && needs.precheck.outputs.platform_lanes_todo_json != '[]' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     permissions:
@@ -212,7 +305,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551d909ad38ac5ccba5bf410fd20b6e8d2b17bed
+          ref: 31369f521ed524370396cad3a5717abd6762d4dc
           path: .ci-lint
           persist-credentials: false
 
@@ -222,9 +315,12 @@ jobs:
           ci-tests: "true"
           cross-target: ${{ matrix.lane.target }}
           cache-key-suffix: platform-build
+          save-cache: ${{ needs.precheck.outputs.cache_save }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          save-cache: ${{ needs.precheck.outputs.cache_save }}
 
       - name: Build + capture compiler-artifact JSON (cross target)
         run: python3 ci/platform_build.py build-json --target ${{ matrix.lane.target }} --out ${{ runner.temp }}/cargo-messages.jsonl
@@ -290,7 +386,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551d909ad38ac5ccba5bf410fd20b6e8d2b17bed
+          ref: 31369f521ed524370396cad3a5717abd6762d4dc
           path: .ci-lint
           persist-credentials: false
 
@@ -302,8 +398,11 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          save-cache: ${{ needs.precheck.outputs.cache_save }}
 
-      - name: Run every declared test binary directly (no Rust toolchain)
+      - name: Run every declared test binary directly (unit suite, when selected; no Rust toolchain)
+        if: contains(matrix.lane.suites, 'unit')
         run: python3 ci/platform_run.py run-tests --artifact-dir ${{ runner.temp }}/stage --results-out ${{ runner.temp }}/platform-run-results.json
 
       - name: Clean-venv wheel install (floor Python)
@@ -355,7 +454,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551d909ad38ac5ccba5bf410fd20b6e8d2b17bed
+          ref: 31369f521ed524370396cad3a5717abd6762d4dc
           path: .ci-lint
           persist-credentials: false
 

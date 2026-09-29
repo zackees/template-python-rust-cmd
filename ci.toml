@@ -2,7 +2,7 @@
 # Nothing here generates YAML: it bounds what the YAML may do and decides what each run selects.
 schema  = 3
 profile = "rust-pypi-app"
-linter  = "zackees/ci.yml@551d909ad38ac5ccba5bf410fd20b6e8d2b17bed"      # the exact ci-lint commit precheck runs
+linter  = "zackees/ci.yml@31369f521ed524370396cad3a5717abd6762d4dc"      # the exact ci-lint commit precheck runs
 
 # ── Platforms ────────────────────────────────────────────────────────────────
 # Every platform compiles on linux (Soldr cross) and executes on its own runner.
@@ -110,13 +110,71 @@ never    = ["linked-tests", "nextest-archives", "wheels", "incremental", "target
 retired  = ["solo-toolchain", "cook-delta-v2"]
 pr       = { mode = "delta", families = ["compile"], max-per-pr = "128MB", budget = "1GB", trim = "on-close" }
 
+##  Sizes below are MEASURED (`gh api repos/zackees/template-python-rust-cmd/
+##  actions/caches`, `python3 -m ci_lint cache audit`, 2026-09-29) unless noted,
+##  set to ~1.5x the largest observed live instance, rounded up. Round-4B
+##  worker report has the full arithmetic and reasoning per family, including
+##  the setup-soldr key-shape source citations (`resolve-setup.ts`/`cook-
+##  cache.ts`/`blessed-cross-prepare.ts`) that justify each `per=`.
 [cache.family]
-registry   = { via = "setup-soldr:cargo-registry",  max = "100MB", lockfile = true }
-deps       = { via = "setup-soldr:cook",            max = "150MB", lockfile = true, per = "platform" }
-compile    = { via = "setup-soldr:build-cache",     max = "150MB", lockfile = true, per = "platform", min = "1MB" }
+# key = prefix(runnerOs,runnerArch) + Cargo.lock-hash + toolchain-signature
+# digest (resolve-setup.ts:1050-1080) -- NOT cache-key-suffix (dropped for
+# this family by setup-soldr#375) and NOT the cross-compile target (crate
+# SOURCES are target-independent). Cardinality is one per distinct
+# toolchain signature actually used: stable (fast + every platform-build
+# leg share ONE entry) + nightly (the dylint job's own toolchain) = 2
+# observed today (30.5MB + 6.0MB live). per="none" (not "platform": it does
+# not scale with declared platform count), max sized for both at once.
+registry   = { via = "setup-soldr:cargo-registry",  max = "96MB", lockfile = true, per = "none" }
+# key = "cook-base-v2-{os}-{libc}-rustc{ver}-f{flags}-l{lockhash}-soldrv{ver}"
+# (cook-cache.ts:247) -- no cross-target component; cook only ever cooks the
+# HOST toolchain's own dependency closure (issue #5 "cook Linux only"/open
+# question on cross lanes). One live entry (26.9MB) regardless of how many
+# platform-build legs also request prebuild-deps=soldr-cook.
+deps       = { via = "setup-soldr:cook",            max = "42MB", lockfile = true, per = "none" }
+# key = prefix(os,arch) + toolchain-signature digest (INCLUDES the merged
+# cross-target list, resolve-setup.ts:653/789) + cache-key-suffix + lockfile
+# hash (setup-soldr#237 kept the suffix deliberately: target/ content
+# differs per job) -- genuinely one distinct entry per declared platform
+# (fast=default target, each platform-build leg=its own cross target), PLUS
+# one more for the dylint job's own nightly-toolchain compile (measured
+# 72.6MB, the largest live instance -- bigger than the default-target one,
+# 19.1MB). per="platform" undercounts by that +1; the 1.5x headroom on
+# `max` (vs. cardinality) absorbs it rather than growing a schema field.
+compile    = { via = "setup-soldr:build-cache",     max = "110MB", lockfile = true, per = "platform", min = "1MB" }
+# key = "setup-soldr-prepare-v3-{os}-{arch}-{target}-r{repoHash}"
+# (blessed-cross-prepare.ts:89) -- one per actual cross target, never the
+# host. per="cross-platform" (5) is exactly right by construction.
 sdk        = { via = "setup-soldr:cross-targets",   max = "500MB", per = "cross-platform" }
-dylint-out = { via = "setup-soldr:dylint-output",   max = "150MB", lockfile = true, per = "platform", min = "1MB" }
-uv         = { via = "ci-lint", key = ["os", "python", "uv.lock"], max = "100MB", per = "os" }
+# key = "setup-soldr-dylint-v2-{os}-{arch}-{target}-{digest}-dylint"
+# (resolve-setup.ts:1185) -- the nightly Dylint toolchain + driver +
+# foundation crates, ONE entry regardless of how many --target passes the
+# multi-target shape checks in the same job/invocation (round-3B). Measured
+# 668.5MB live (`setup-soldr-dylint-v2-linux-x64-...-dylint`), previously
+# undeclared (CACHE-001 on every run). per="none": doesn't scale with
+# declared platforms -- it is the one Linux Dylint job's own toolchain.
+dylint     = { via = "setup-soldr:dylint",          max = "1024MB", per = "none", min = "1MB" }
+# key = "setup-soldr-dylint-output-v1-{os}-{arch}-{hash}" (resolve-setup.ts
+# :1204) -- the multi-target shape's own lint-output cache, one entry per
+# commit-state generation (older generations are CACHE-006 "superseded",
+# not concurrent per-platform variants -- the 3 live entries observed are 3
+# generations of ONE family member, not 3 simultaneous ones). Measured
+# ~71-75MB per generation; per="none" (was "platform", overcounting 6x).
+dylint-out = { via = "setup-soldr:dylint-output",   max = "115MB", lockfile = true, per = "none", min = "1MB" }
+# key = "soldr-mini-v2-{os}-{arch}-{libc}-v{soldrVersion}" (soldr-mini-cache
+# .ts:85) -- the soldr binary itself, one entry regardless of target/lane.
+# Measured 10.8MB live, previously undeclared (CACHE-001).
+soldr-mini = { via = "setup-soldr:soldr-mini",      max = "18MB", per = "none" }
+# key = "setup-uv-2-{arch}-{platform-triple}-{os-version}-{python-version}-
+# {lockfile-hash}[-suffix]" (astral-sh/setup-uv src/cache/restore-cache.ts;
+# see docs/ci-toml.md "astral-sh/setup-uv's own cache") -- cardinality is
+# per (arch, platform, OS version, python version), which tracks declared
+# platforms closely enough in this repo (6 distinct live entries observed
+# across the 6 declared platforms on 2026-09-29) that per="platform" is the
+# best fit the schema offers; round-4A's note that python-patch-version
+# churn could still exceed it stands as a known follow-up, not fixed here.
+# max sized for the largest observed instance (linux-x64, 28.2MB).
+uv         = { via = "setup-uv",                    max = "44MB", per = "platform" }
 
 # ── Local runs: bosn → act (§11) ─────────────────────────────────────────────
 [local]
@@ -128,7 +186,23 @@ cache  = "machine"
 [allow]
 workflows         = { "ci.yml" = ["pull_request", "push:main", "schedule", "workflow_dispatch"], "ci-precheck.yml" = ["workflow_call"] }
 actions           = ["actions/checkout", "actions/upload-artifact", "actions/download-artifact", "zackees/setup-soldr", "astral-sh/setup-uv"]
-setup-soldr       = { only-in = ".github/actions/soldr", require = { solo-toolchain-cache = "false", cook-delta = "false", save-cache = "auto" } }
+# "plan" (round-4B): the wrapper's save-cache input must be an expression
+# derived from the precheck plan (needs.precheck.outputs.cache_save, passed
+# through as inputs.save-cache), never a literal -- saves only fire when
+# plan.cache_mode == "write" (CACHE-009).
+setup-soldr       = { only-in = ".github/actions/soldr", require = { solo-toolchain-cache = "false", cook-delta = "false", save-cache = "plan" } }
+# Round-4B: astral-sh/setup-uv's own save-cache input is checked the same
+# way, on every use of the action (it has no single wrapper location) --
+# missing or a literal "true" both save unconditionally, including on PRs
+# (CACHE-003; see docs/ci-toml.md "astral-sh/setup-uv's own cache").
+setup-uv          = { require = { save-cache = "plan" } }
+# Round-4B (SEC-002 refinement): top-level permissions are capped at
+# contents:read + actions:read (free on every job too, no entry needed);
+# any wider per-job grant must be listed here by job id. `cache-maint`
+# (deliverable 4) is the only job in this repo that needs `actions: write`
+# (cache preprune/janitor deletes); no `publish` job exists yet, so
+# `id-token: write` is not granted to anything.
+permissions       = { "actions: write" = ["cache-maint"] }
 tools             = ["soldr", "uv", "python3", "yq", "git"]
 secrets           = []
 platform-selector = "crates/private/template-platform/src/lib.rs"   # the ONE file allowed to select on host
@@ -145,29 +219,8 @@ reason  = "Gate launcher kept for now (owner-approved); replace with a Python en
 issue   = "https://github.com/zackees/template-python-rust-cmd/issues/15"
 expires = "2026-12-31"
 
-# SEC-002 (as pinned at `linter` above) flags ANY job/top-level permissions
-# key other than `contents: read` / the publish job's `id-token: write` --
-# including `actions: read`, which round 3 needs on the precheck job (to
-# call ci_lint plan --reuse's read-only Actions runs/jobs API) and on
-# ci-ok (to live-verify a reused job before treating its "skipped" result
-# as a pass; zackees/ci.yml#6 round-3A "Reuse verification"). `actions:
-# read` is materially different from `actions: write`/`id-token: write`
-# (no ability to mutate or mint credentials) but the rule does not yet
-# make that distinction -- see the round-3B worker report's drafted
-# upstream issue. Declared here, per repo, rather than silently
-# suppressed; matches (rule, path) equality, so one entry per file covers
-# every `actions: read` occurrence in it (precheck job + top-level in
-# ci-precheck.yml; the precheck-caller job + ci-ok job in ci.yml).
-[[exceptions]]
-rule    = "SEC-002"
-path    = ".github/workflows/ci-precheck.yml"
-reason  = "actions: read (top-level + precheck job) is required for ci_lint plan --reuse's read-only Actions API lookups (title-edit reuse, ci.yml#6 round 3A). Read-only, not a mutation/OIDC grant; SEC-002 does not yet distinguish it from a wider grant."
-issue   = "https://github.com/zackees/ci.yml/issues/6"
-expires = "2026-12-31"
-
-[[exceptions]]
-rule    = "SEC-002"
-path    = ".github/workflows/ci.yml"
-reason  = "actions: read on the precheck-caller job (required to pass the permission down into ci-precheck.yml's workflow_call) and on ci-ok (to live-verify a reused job via GET /repos/.../actions/jobs/{id} before accepting a skip as a pass) is required for ci.yml#6 round 3A's reuse verification. Read-only, not a mutation/OIDC grant."
-issue   = "https://github.com/zackees/ci.yml/issues/6"
-expires = "2026-12-31"
+# The two SEC-002 exceptions round-3B needed for `actions: read` (on
+# ci-precheck.yml's precheck job and ci.yml's precheck-caller/ci-ok jobs)
+# are GONE as of round-4B: zackees/ci.yml@31369f5 makes `actions: read`
+# free at both the top level and per-job (the exact refinement the round-3B
+# worker report drafted upstream -- see that report and zackees/ci.yml#6).

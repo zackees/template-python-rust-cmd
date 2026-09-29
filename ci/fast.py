@@ -106,11 +106,23 @@ def cmd_rust_test(_args: argparse.Namespace) -> int:
     return _run(["soldr", "cargo", "test", "--workspace", "--locked"])
 
 
+def cmd_python_sync(_args: argparse.Namespace) -> int:
+    """Editable-install the project through the real Soldr PEP 517 backend
+    (builds `_native` in place under `src/template_python_rust_cmd/` and
+    bundles `template-cli`) -- WITHOUT running any tests. Split out from
+    `cmd_python_test` (below) so the `pylint` gate (GEN-004; needs
+    `_native` importable for `extension-pkg-allow-list`) can depend on
+    just this, unconditionally, independent of whether the `unit` suite
+    is selected (ci.yml#6 round-4B suite gating: `[no-test]` skips the
+    test steps below, never packaging/lint). See `_run_isolated_soldr`'s
+    docstring for why the nested `uv sync` needs an isolated soldr root.
+    """
+    return _run_isolated_soldr(["uv", "sync", "--frozen"])
+
+
 def cmd_python_test(_args: argparse.Namespace) -> int:
-    """Install the project through the real Soldr PEP 517 backend (builds
-    `_native` and bundles `template-cli`), then run pytest against that
-    installed artifact — not an in-place `cargo build`. See
-    `_run_isolated_soldr`'s docstring for why `uv sync` needs it.
+    """Sync (see `cmd_python_sync`), then run pytest against that
+    installed artifact — not an in-place `cargo build`.
 
     `-m "not integration"`: the `unit` suite never runs
     `tests/integration/` (ci.toml `[suites].integration`, opt-in only —
@@ -181,6 +193,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("rust-test")
     p.set_defaults(func=cmd_rust_test)
+
+    p = sub.add_parser("python-sync")
+    p.set_defaults(func=cmd_python_sync)
 
     p = sub.add_parser("python-test")
     p.set_defaults(func=cmd_python_test)
