@@ -159,3 +159,13 @@ The action installs the package via `uv tool install`, exposes
 cleanup sibling step removes the install and prunes the uv cache.
 Every `run:` step in both `action.yml` files is one line calling a
 Python script under `action/` — no inline shell logic.
+
+## Dylint cache reuse across commits
+
+The `dylint` job's `dylint-output-cache` (compiled lint libraries plus
+the checked `target/` tree, restored/saved through
+`.github/actions/soldr`) now survives across commits, not just
+same-commit reruns — [zackees/ci.yml#1](https://github.com/zackees/ci.yml/issues/1),
+fixed by [zackees/setup-soldr#540](https://github.com/zackees/setup-soldr/issues/540)/`v0.9.82`.
+Evidence, log excerpts, and the before/after key shape are recorded in
+[`.github/actions/soldr/README.md`](./.github/actions/soldr/README.md).
