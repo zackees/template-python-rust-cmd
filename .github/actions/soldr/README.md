@@ -22,7 +22,7 @@ action's own `inputs:`, so a caller cannot override them even by accident.
 
 ## Pinning
 
-- `zackees/setup-soldr@4df8db93438594f50505574d9dc8117505d33362` (`v0.9.80`,
+- `zackees/setup-soldr@c0b72703f3896ff66d4878b115365dceff3c7288` (`v0.9.81`,
   the newest tagged release as of 2026-09-28). `v0` (the major-version
   moving tag) currently resolves to the SAME commit
   (`67ed4018aca013f8388050ac9bc264244f9b742c` was an earlier `v0` snapshot;

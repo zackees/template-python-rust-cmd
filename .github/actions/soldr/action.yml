@@ -121,7 +121,7 @@ runs:
   steps:
     - name: setup-soldr
       id: setup
-      uses: zackees/setup-soldr@4df8db93438594f50505574d9dc8117505d33362 # v0.9.80
+      uses: zackees/setup-soldr@c0b72703f3896ff66d4878b115365dceff3c7288 # v0.9.81
       with:
         version: "0.9.25" # matches pyproject.toml's `requires = ["soldr==0.9.25"]` (the PEP 517 backend pin)
         toolchain-file: "rust-toolchain.toml"
