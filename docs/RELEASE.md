@@ -28,6 +28,31 @@ excludes by construction (`[flow.pr]`'s own default fast-lane platform);
 via a `--profile release` toggle, same jobs the PR/main flows already
 use at dev profile.
 
+### The glibc floor: release/verify artifacts only, never the fast lane
+
+`ci.toml [platforms.linux-x64/linux-arm64].wheel = "manylinux_2_17"` is
+the fleet's declared floor for a **distributed** Linux wheel
+(docs/policy-rust.md, proposal.md's target model) — every wheel that
+`release-verify`/`publish` handle must meet it. It is enforced two ways:
+`ci-lint release verify` (`PKG-006`) checks the staged wheel's filename
+tag against it, and `ci/release.py glibc-check` independently parses the
+staged wheel's bundled native CLI + PyO3 extension (`readelf -V`,
+falling back to `objdump -T`) for the actual maximum `GLIBC_X.Y`
+version-need string and fails if it exceeds the floor — proof from the
+artifact's own bytes, not just the filename. Both `linux-x64` and
+`linux-arm64` route through Soldr's controlled manylinux_2_17 cross
+sysroot to hit it: `linux-arm64` via `platform-build`'s ordinary cross
+target, `linux-x64` via `release-linux-x64` passing `cross-target:
+x86_64-unknown-linux-gnu` to `.github/actions/soldr` (same arch as the
+`ubuntu-24.04` host, but through the sysroot instead of the runner's own
+newer glibc).
+
+**This floor is release-scope only.** The `fast` lane's PR-smoke wheel
+(`ci/fast.py wheel-build`) stays a plain host build — untagged against
+any manylinux floor, built for iteration speed, and never staged for
+`release-verify`/`publish`. Only the artifacts those two jobs actually
+handle (the release-profile wheel matrix) are held to glibc 2.17.
+
 **Known limitation** (reported upstream — see the worker report for the
 round-5 PR that found it): the wheel is built directly from the working
 tree, not from the sdist. `uv build`'s sdist-then-wheel-from-sdist path

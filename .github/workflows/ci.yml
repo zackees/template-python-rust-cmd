@@ -556,22 +556,24 @@ jobs:
           path: .ci-lint
           persist-credentials: false
 
-      # NOT `cross-target: x86_64-unknown-linux-gnu` -- tried and reverted
-      # (round-5 finding, see ci/release.py's `cmd_build` docstring):
-      # soldr deliberately does NOT mount a cross sysroot when the
-      # requested target equals the host ("any host-target build --
-      # `--target` omitted or equal to the host: `pypi`" per soldr's own
-      # docs' platform-tags table) -- a host build always gets the
-      # runner's own real glibc-derived tag (`manylinux_2_34_x86_64` on
-      # `ubuntu-24.04`, confirmed live: run 36510818002, job
-      # 109222847723), and soldr will not claim a floor it didn't
-      # enforce ("a manylinux_2_17 tag there would be a claim nothing
-      # backed"). `ci.toml [platforms.linux-x64].wheel` is corrected to
-      # the measured tag instead of chasing an unreachable one.
-      - name: Setup soldr (release profile)
+      # `cross-target: x86_64-unknown-linux-gnu` -- same arch as this
+      # `ubuntu-24.04` host, but routes through Soldr's controlled
+      # manylinux_2_17 cross sysroot instead of the runner's own (newer)
+      # glibc -- the SAME mechanism `linux-arm64`'s platform-build leg
+      # already uses successfully. A plain host build (no cross-target)
+      # tags itself with the runner's real glibc (`manylinux_2_34_x86_64`
+      # on `ubuntu-24.04`, confirmed live: run 36510818002, job
+      # 109222847723) -- the fleet's declared glibc-2.17 floor
+      # (docs/policy-rust.md) requires the sysroot, not a relaxed
+      # declaration. `ci/release.py glibc-check` (below) verifies the
+      # staged wheel's actual max required GLIBC symbol version against
+      # this floor from the artifact's own bytes, not just the wheel
+      # filename tag.
+      - name: Setup soldr (release profile, manylinux_2_17 cross sysroot)
         uses: ./.github/actions/soldr
         with:
           ci-tests: "true"
+          cross-target: "x86_64-unknown-linux-gnu"
           prebuild-deps-flags: "--release"
           cache-key-suffix: "release"
           # Never saved -- see platform-build's identical note (CACHE-004
@@ -584,9 +586,14 @@ jobs:
         with:
           save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
 
-      - name: Build sdist + release-profile wheel (Soldr PEP 517 backend, from the working tree)
+      - name: Build sdist + release-profile wheel (Soldr PEP 517 backend, manylinux_2_17 cross sysroot)
         id: release-build
-        run: python3 ci/release.py build --out dist/release-linux-x64
+        run: python3 ci/release.py build --target x86_64-unknown-linux-gnu --out dist/release-linux-x64
+
+      - name: GLIBC floor check (measures the staged wheel's actual max required GLIBC symbol version)
+        env:
+          WHEEL_PATH: ${{ steps.release-build.outputs.wheel-path }}
+        run: python3 ci/release.py glibc-check --wheel "$WHEEL_PATH" --max-glibc 2.17
 
       - name: ci_lint wheel check (PKG-003/004/005, static)
         env:

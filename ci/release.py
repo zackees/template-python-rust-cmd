@@ -30,10 +30,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -115,23 +118,21 @@ def _make_executable(path: Path) -> None:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    """`--target <triple>` -- unused by `.github/workflows/ci.yml` today
-    (kept for a future cross-built linux-x64 leg), but NOT the fix for
-    this round's tag-mismatch finding: a plain HOST build of linux-x64
-    tags itself `manylinux_2_34_x86_64` (confirmed live: run 36510818002,
-    job 109222847723 -- maturin's real symbol-version scan of the actual
-    linked binary, not simply the runner's installed glibc). Passing
-    `--target x86_64-unknown-linux-gnu` (same triple as the host) was
-    tried and reverted: soldr's own docs are explicit that it does NOT
-    mount a cross sysroot when the requested target equals the host --
-    "any host-target build (`--target` omitted or equal to the host):
-    `pypi`" (soldr's platform-tags table) -- specifically because a false
-    `manylinux_2_17` claim on a host build "would be a claim nothing
-    backed" (pip installs such a wheel on an old host and it then dies
-    with `GLIBC_2.39' not found`). **Decision**: `ci.toml
-    [platforms.linux-x64].wheel` is corrected to the measured
-    `manylinux_2_34` instead of chasing an unreachable `manylinux_2_17`
-    for a host-arch build on `ubuntu-24.04`."""
+    """`--target <triple>` -- `.github/workflows/ci.yml`'s
+    `release-linux-x64` job ALWAYS passes `x86_64-unknown-linux-gnu`
+    (same triple as the `ubuntu-24.04` host) to route the wheel build
+    through Soldr's controlled manylinux_2_17 cross sysroot instead of
+    the runner's own newer glibc -- the SAME mechanism `linux-arm64`'s
+    `platform-build` leg already uses successfully. A plain HOST build
+    (no `--target`, i.e. no cross sysroot mounted) tags itself with the
+    runner's real glibc instead (`manylinux_2_34_x86_64`, confirmed
+    live: run 36510818002, job 109222847723) -- which is NOT the fix:
+    the fleet's declared glibc-2.17 floor (docs/policy-rust.md) is a
+    policy this build must MEET, not a declaration to relax to match
+    whatever an unconstrained build happens to produce. `glibc-check`
+    (below) verifies the staged wheel's actual max required GLIBC
+    symbol version from the artifact's own bytes -- the proof that the
+    cross sysroot, not just the wheel filename tag, is doing its job."""
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     rc = _run_isolated_soldr(["uv", "build", "--sdist", "--out-dir", str(out_dir)])
@@ -171,6 +172,127 @@ def cmd_build(args: argparse.Namespace) -> int:
             fh.write(f"wheel-path={wheels[-1]}\n")
             fh.write(f"sdist-path={sdists[-1]}\n")
     return 0
+
+
+# ---------------------------------------------------------------------------
+# glibc-check: proves the manylinux_2_17 cross sysroot did its job, from
+# the staged wheel's OWN bytes -- not just the filename tag a build could
+# get wrong (round-5 orchestrator correction: "inspect the bundled CLI/
+# extension's maximum required GLIBC symbol version ... ≤ 2.17 -- record
+# the value"). Extracts the bundled native CLI (`*.data/scripts/<cli>`)
+# and the PyO3 extension (`*/_native*.so`) from the wheel, runs `readelf
+# -V` (falling back to `objdump -T` if `readelf` isn't on PATH -- both
+# are standard `binutils`, never a banned TOOL-001 name) against each
+# extracted ELF, and parses every `GLIBC_X.Y` version-need string out of
+# the text output. The MAXIMUM (X, Y) found across both files is the
+# real floor this wheel needs; `--max-glibc` is ci.toml's declared one.
+# Pure verification -- never invokes cargo/soldr/uv.
+# ---------------------------------------------------------------------------
+
+
+def _extract_elf_members(wheel_path: Path, out_dir: Path) -> list[tuple[str, Path]]:
+    """Pull the bundled native CLI and the PyO3 extension out of the
+    wheel into `out_dir`, returning `(member_name, extracted_path)` for
+    each ELF found (skips anything that clearly isn't one, e.g. a `.pyi`
+    stub or `RECORD`)."""
+    extracted: list[tuple[str, Path]] = []
+    with zipfile.ZipFile(wheel_path) as zf:
+        for member in zf.namelist():
+            is_bundled_cli = ".data/scripts/" in member
+            is_native_ext = member.endswith(".so") and "_native" in member
+            if not (is_bundled_cli or is_native_ext):
+                continue
+            dest = out_dir / Path(member).name
+            with zf.open(member) as src, dest.open("wb") as dst:
+                shutil.copyfileobj(src, dst)
+            extracted.append((member, dest))
+    return extracted
+
+
+def _max_glibc_version(elf_path: Path) -> tuple[int, int] | None:
+    """The highest `GLIBC_X.Y` version-need string found in `elf_path`'s
+    `.gnu.version_r` (verneed) section, via `readelf -V` (or `objdump -T`
+    if `readelf` is missing). `None` means the binary references no
+    versioned GLIBC symbol at all (e.g. fully static, or no libc
+    dependency) -- reported, never silently treated as "0.0 floor met"."""
+    tool_argv_candidates = [
+        ["readelf", "-V", str(elf_path)],
+        ["objdump", "-T", str(elf_path)],
+    ]
+    output: str | None = None
+    tool_used: str | None = None
+    for argv in tool_argv_candidates:
+        if shutil.which(argv[0]) is None:
+            continue
+        proc = subprocess.run(argv, check=False, capture_output=True, text=True)
+        if proc.returncode == 0:
+            output = proc.stdout
+            tool_used = argv[0]
+            break
+    if output is None:
+        raise RuntimeError(
+            f"neither 'readelf' nor 'objdump' produced usable output for {elf_path} "
+            "(is binutils installed on this runner?)"
+        )
+    versions = {
+        (int(m.group(1)), int(m.group(2)))
+        for m in re.finditer(r"GLIBC_(\d+)\.(\d+)", output)
+    }
+    print(
+        f"ci/release.py: {elf_path.name}: {tool_used} found GLIBC versions {sorted(versions)}"
+    )
+    return max(versions) if versions else None
+
+
+def cmd_glibc_check(args: argparse.Namespace) -> int:
+    wheel_path = Path(args.wheel)
+    if not wheel_path.is_file():
+        print(f"ci/release.py: {wheel_path} is not a file", file=sys.stderr)
+        return 2
+    try:
+        max_major, max_minor = (int(p) for p in args.max_glibc.split("."))
+    except ValueError:
+        print(
+            f"ci/release.py: --max-glibc {args.max_glibc!r} is not 'X.Y'",
+            file=sys.stderr,
+        )
+        return 2
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        members = _extract_elf_members(wheel_path, tmp_dir)
+        if not members:
+            print(
+                f"ci/release.py: glibc-check: no ELF members found in {wheel_path}",
+                file=sys.stderr,
+            )
+            return 2
+
+        try:
+            found = [(name, _max_glibc_version(path)) for name, path in members]
+        except RuntimeError as exc:
+            print(f"ci/release.py: glibc-check: {exc}", file=sys.stderr)
+            return 2
+
+    overall = [v for _name, v in found if v is not None]
+    if not overall:
+        print(
+            "ci/release.py: glibc-check: no GLIBC_X.Y version-need strings found in any "
+            "bundled ELF -- needs_review, not a pass (unexpected for a glibc-linked binary)"
+        )
+        return 2
+
+    worst_name, worst = max(
+        ((name, v) for name, v in found if v is not None), key=lambda t: t[1]
+    )
+    floor = (max_major, max_minor)
+    passed = worst <= floor
+    print(
+        f"ci/release.py: glibc-check: max required GLIBC_{worst[0]}.{worst[1]} "
+        f"(from {worst_name}), floor manylinux_{max_major}_{max_minor} -> "
+        f"{'PASS' if passed else 'FAIL'}"
+    )
+    return 0 if passed else 1
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +405,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--staged-dir", required=True)
     p.add_argument("--dist-dir", required=True)
     p.set_defaults(func=cmd_collect_wheels)
+
+    p = sub.add_parser("glibc-check")
+    p.add_argument("--wheel", required=True)
+    p.add_argument("--max-glibc", required=True, help="e.g. 2.17")
+    p.set_defaults(func=cmd_glibc_check)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

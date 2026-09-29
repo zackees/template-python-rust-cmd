@@ -91,16 +91,24 @@ step (CLAUDE.md rule 6):
   `workflow_dispatch`, the checked-out commit must equal `inputs.sha` and
   be reachable from `main`; a no-op on every other event (a `[release]`
   PR rehearsal, or `nightly`, has no `inputs.sha` to pin against).
-- **`release.py`** (round 5) — linux-x64's sdist + release-profile wheel
-  (`build`), its native install smoke (`smoke`, writes `smoke-results/
-  linux-x64.json`), and `collect-wheels` (merges `platform_build.py`'s
+- **`release.py`** (round 5) — linux-x64's sdist + release-profile wheel,
+  built through Soldr's manylinux_2_17 cross sysroot (`build --target
+  x86_64-unknown-linux-gnu`, same arch as the `ubuntu-24.04` host but the
+  controlled sysroot instead of the runner's own newer glibc), its
+  native install smoke (`smoke`, writes `smoke-results/linux-x64.json`),
+  `glibc-check` (parses the staged wheel's bundled CLI + PyO3 extension
+  with `readelf -V`/`objdump -T` for the actual max required `GLIBC_X.Y`
+  symbol version and fails over the declared floor — proof from the
+  artifact's own bytes, not just the filename tag — see docs/RELEASE.md
+  "The glibc floor"), and `collect-wheels` (merges `platform_build.py`'s
   staged cross-platform wheels into one flat `dist/` for `release-
   verify`). See its module docstring for a real, reproduced upstream
-  soldr/maturin limitation this module works around: the wheel is built
-  directly from the working tree, not from the sdist (`uv build`'s
-  sdist-then-wheel path fails — maturin's sdist-trimmed workspace
-  `Cargo.toml` drops `template-cli`, a `bundle-bins` sibling with no
-  Cargo dependency edge to the extension crate).
+  soldr/maturin limitation this module ALSO works around (separate from
+  the glibc floor): the wheel is built directly from the working tree,
+  not from the sdist (`uv build`'s sdist-then-wheel path fails --
+  maturin's sdist-trimmed workspace `Cargo.toml` drops `template-cli`, a
+  `bundle-bins` sibling with no Cargo dependency edge to the extension
+  crate).
 - **`perf.py`** / **`perf_pyo3_bench.py`** (round 5) — `perf.py bench`
   builds a release-profile wheel, installs it into a clean venv, then
   times `template-cli --version` startup and (via `perf_pyo3_bench.py`,

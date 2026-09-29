@@ -8,20 +8,20 @@ linter  = "zackees/ci.yml@db0be5c8cea71c12b31493a994e874e87f76390c"      # the e
 # Every platform compiles on linux (Soldr cross) and executes on its own runner.
 # Each id generates a [ci-<id>] tag; `group` generates [ci-<group>].
 #
-# `linux-x64`'s `wheel` (round 5, MEASURED live: run 36510818002, job
-# 109222847723, 2026-09-29) is `manylinux_2_34`, NOT `manylinux_2_17`.
-# linux-x64 is a HOST-arch build on `ubuntu-24.04` (no soldr cross sysroot
-# mounted for a target equal to the host -- soldr's own docs: "any
-# host-target build: `pypi`" -- i.e. tag derived from the real linked
-# glibc symbols, `2.39` on this runner image, not a claimed floor). A
-# `manylinux_2_17` claim there would be false -- pip would install the
-# wheel on an old host and it would crash with `GLIBC_2.39' not found`.
-# `linux-arm64` genuinely IS built through soldr's cross sysroot (a
-# different target than the host), so `manylinux_2_17` stays correct
-# there -- see `ci/release.py`'s `cmd_build` docstring for the full
-# evidence and the reverted "force a same-arch cross build" attempt.
+# `linux-x64`'s `wheel` stays `manylinux_2_17` -- the fleet's declared
+# glibc floor for a distributed Linux wheel (docs/policy-rust.md,
+# proposal.md's target model), NOT a value to relax to match whatever a
+# particular build happened to produce. Round 5 found the RELEASE build
+# must route linux-x64 through Soldr's same manylinux_2_17 cross sysroot
+# `linux-arm64` already uses (`cross-target: x86_64-unknown-linux-gnu`,
+# same arch as the host but a controlled sysroot instead of the runner's
+# own newer glibc) -- see `ci/release.py`'s `cmd_build` docstring and
+# `ci/release.py glibc-check`'s live-measured evidence in the round's
+# worker report. The `fast` lane's dev-profile wheel stays host-native
+# (untagged manylinux floor) for iteration speed; only release/verify
+# artifacts are held to this floor -- see docs/RELEASE.md.
 [platforms]
-linux-x64     = { target = "x86_64-unknown-linux-gnu",  runs-on = "ubuntu-24.04",     group = "linux",   wheel = "manylinux_2_34" }
+linux-x64     = { target = "x86_64-unknown-linux-gnu",  runs-on = "ubuntu-24.04",     group = "linux",   wheel = "manylinux_2_17" }
 linux-arm64   = { target = "aarch64-unknown-linux-gnu", runs-on = "ubuntu-24.04-arm", group = "linux",   wheel = "manylinux_2_17" }
 windows-x64   = { target = "x86_64-pc-windows-msvc",    runs-on = "windows-2025",     group = "windows" }
 windows-arm64 = { target = "aarch64-pc-windows-msvc",   runs-on = "windows-11-arm",   group = "windows" }
