@@ -53,19 +53,19 @@ any manylinux floor, built for iteration speed, and never staged for
 `release-verify`/`publish`. Only the artifacts those two jobs actually
 handle (the release-profile wheel matrix) are held to glibc 2.17.
 
-**The release wheel is built from the sdist.** `ci/release.py build` runs
-one `uv build` (sdist, then the wheel from that extracted sdist) with
-`profile=release`, so the staged wheel is proven to come from the staged
-sdist alone (PKG-004). This needs soldr >= 0.9.26: before
-[zackees/soldr#3451](https://github.com/zackees/soldr/pull/3451) (closing
-[zackees/soldr#3444](https://github.com/zackees/soldr/issues/3444)),
-maturin's sdist writer dropped `crates/template-cli` (a `bundle-bins`
-sibling with no Cargo edge to the extension crate) from the sdist's
-workspace `members`, and the from-sdist wheel build failed with
-`package ID specification 'template-cli' did not match any packages`.
-Rounds 5 through M2-35 worked around that with two separate
-`uv build --sdist` / `uv build --wheel` calls; pyproject.toml's floor is
-now `soldr>=0.9.26` and the workaround is removed.
+**The release wheel is built with `soldr wheel --release`; the sdist is
+proven separately.** `ci/release.py build` writes the sdist through the
+Soldr PEP 517 backend (`uv build --sdist`) and the staged wheel with
+`soldr wheel --release [--target <triple>]` (zackees/ci.yml#17,
+template-python-rust-cmd#37). Since soldr 0.9.27
+([zackees/soldr#3468](https://github.com/zackees/soldr/issues/3468)),
+`soldr wheel` bundles `[tool.soldr.pep517] bundle-bins`, so the wheel
+still carries `<dist>.data/scripts/template-cli` (PKG-003).
+`ci/release.py sdist-smoke` then builds a wheel FROM the staged sdist
+through the PEP 517 frontend and requires the bundled CLI in it (PKG-004).
+That path needs soldr >= 0.9.26
+([zackees/soldr#3451](https://github.com/zackees/soldr/pull/3451)), which
+keeps `crates/template-cli` in the sdist's workspace `members`.
 
 ## What you CAN do locally today: build and inspect release artifacts
 
