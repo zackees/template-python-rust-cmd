@@ -713,6 +713,153 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # musllinux (ci.yml#43): a bespoke job pair, same precedent as
+  # `release-linux-x64` above -- these two platforms are release-only and
+  # deliberately excluded from `[flow.release].platforms` (see ci.toml),
+  # so `plan.platform_lanes` never covers them and the generic
+  # `platform-build`/`platform-run` matrix never tries to native-run a
+  # musl wheel on a glibc runner (a musllinux wheel is not pip-installable
+  # into a glibc/manylinux CPython, and a statically-linked musl PyO3
+  # extension cannot be dlopen'd by a glibc-linked CPython either).
+  # `release-musl-build` cross-compiles both musl targets on Linux
+  # through Soldr (soldr-toolchain ships `x86_64-unknown-linux-musl` /
+  # `aarch64-unknown-linux-musl` recipes -- zackees/soldr docs/
+  # CROSS_COMPILE.md's canonical target table lists both as "Shipped").
+  # `release-musl-smoke` (below) does the REAL install smoke inside a
+  # digest-pinned Alpine (musl libc) container -- the only environment
+  # that can actually load a musllinux wheel's native extension.
+  release-musl-build:
+    name: release-musl-build (${{ matrix.lane.id }})
+    needs: [precheck, cache-maint, release-guard]
+    if: ${{ !cancelled() && !failure() && needs.release-guard.result == 'success' }}
+    runs-on: ${{ matrix.lane.runs_on }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        lane:
+          - { id: linux-x64-musl, target: x86_64-unknown-linux-musl, runs_on: ubuntu-24.04 }
+          # Both legs build on the x86_64 host: soldr-toolchain's musl
+          # bundles are hosted on x86_64-unknown-linux-gnu only (the
+          # bundle slug names the TARGET shape, not the host shape --
+          # confirmed live, run 36520084037/job 109250897165: "the
+          # catalogue musl/Linux toolchain cannot run on this host ...
+          # every bundle is hosted on x86_64-unknown-linux-gnu", soldr#3296).
+          - { id: linux-arm64-musl, target: aarch64-unknown-linux-musl, runs_on: ubuntu-24.04 }
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout exact candidate commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.sha || github.sha }}
+
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: 86f7646b0a24baf734725b9891a2954df984437f
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Setup soldr (release profile, musl cross target ${{ matrix.lane.target }})
+        uses: ./.github/actions/soldr
+        with:
+          ci-tests: "true"
+          cross-target: ${{ matrix.lane.target }}
+          prebuild-deps-flags: "--release"
+          cache-key-suffix: "release-musl"
+          # Never saved -- same reasoning as platform-build/release-linux-x64's
+          # identical note: this is a second, release-profile generation of
+          # deps/compile that ci.toml's CACHE-004 budget proof doesn't
+          # account a save for.
+          save-cache: "false"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          save-cache: "false"
+
+      - name: Build sdist + release-profile musl wheel (Soldr PEP 517 backend, cross target)
+        id: musl-build
+        run: python3 ci/release.py build --target ${{ matrix.lane.target }} --out dist/release-${{ matrix.lane.id }}
+
+      - name: ci_lint wheel check (PKG-003/004/005, static)
+        env:
+          PYTHONPATH: .ci-lint
+          WHEEL_PATH: ${{ steps.musl-build.outputs.wheel-path }}
+        run: python3 -m ci_lint wheel check --repo . --wheel "$WHEEL_PATH"
+
+      - name: Upload release dist (sdist + ${{ matrix.lane.id }} wheel)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dist-${{ matrix.lane.id }}
+          path: dist/release-${{ matrix.lane.id }}
+          retention-days: 1
+          if-no-files-found: error
+
+  # Real native install smoke of the just-built musllinux wheel, run
+  # INSIDE a digest-pinned `python:3.13-alpine` container (musl libc) --
+  # the only environment where a musllinux wheel's platform tag is
+  # pip-installable and its native extension is dlopen-able. Alpine ships
+  # neither `soldr` nor `uv`; this job uses only stdlib `venv`/`pip`
+  # (already bundled with the container's CPython), which is why it is a
+  # SEPARATE job from `release-musl-build` rather than one more step
+  # there (the build steps above still route only through soldr/uv, per
+  # ci.toml [allow].tools).
+  release-musl-smoke:
+    name: release-musl-smoke (${{ matrix.lane.id }})
+    needs: [precheck, release-musl-build]
+    if: ${{ !cancelled() && !failure() && needs.release-musl-build.result == 'success' }}
+    # NOT a job-level `container:` (tried first; reverted -- see commit
+    # message): GitHub's own Node.js "externals" that every JS action
+    # (`actions/checkout`, `actions/download-artifact`, ...) needs cannot
+    # exec inside an Alpine container on an arm64 runner ("JavaScript
+    # Actions in Alpine containers are only supported on x64 Linux
+    # runners", confirmed live: run 36520228712, job 109252029709).
+    # Instead this job runs directly on the host runner (every JS action
+    # works normally there) and reaches into Alpine with a single plain
+    # `docker run` `run:` step -- that is NOT a GitHub Actions container
+    # job, just an ordinary shell command, so the restriction above never
+    # applies to it. `python:3.13-alpine`'s multi-arch manifest makes
+    # Docker pull the native-arch image automatically to match `runs-on`.
+    runs-on: ${{ matrix.lane.runs_on }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        lane:
+          - { id: linux-x64-musl, runs_on: ubuntu-24.04 }
+          - { id: linux-arm64-musl, runs_on: ubuntu-24.04-arm }
+    steps:
+      - name: Checkout exact candidate commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.sha || github.sha }}
+
+      - name: Download ${{ matrix.lane.id }} release dist (sdist + wheel)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist-${{ matrix.lane.id }}
+          path: dist
+
+      - name: Native CLI smoke inside Alpine (musl libc) + write smoke-results/${{ matrix.lane.id }}.json
+        env:
+          MUSL_SMOKE_PLATFORM_ID: ${{ matrix.lane.id }}
+        run: docker run --rm -v "$PWD:/work" -w /work python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f python3 ci/musl_smoke.py --wheel-dir dist --platform-id "$MUSL_SMOKE_PLATFORM_ID" --venv .venv-musl-smoke --cli-name template-cli --out smoke-results/${{ matrix.lane.id }}.json
+
+      - name: Upload release smoke result
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-smoke-${{ matrix.lane.id }}
+          path: smoke-results/${{ matrix.lane.id }}.json
+          retention-days: 1
+          if-no-files-found: error
+
   # Job id MUST be exactly "release-verify" (ci_lint gate's required-job-id
   # convention: required when `plan.publish` is `rehearsal` or `mock`).
   # Downloads every staged wheel + the linux-x64 sdist and every
@@ -720,7 +867,7 @@ jobs:
   # pair, then `ci-lint release verify` (PKG-006, issue #6 §3/ci.yml#4).
   release-verify:
     name: release-verify
-    needs: [precheck, release-guard, release-linux-x64, platform-build, platform-run]
+    needs: [precheck, release-guard, release-linux-x64, platform-build, platform-run, release-musl-smoke]
     if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && fromJSON(needs.precheck.outputs.plan).publish != 'none' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -740,11 +887,12 @@ jobs:
           path: .ci-lint
           persist-credentials: false
 
-      - name: Download linux-x64 release dist (sdist + wheel)
+      - name: Download linux-x64 + musl release dist (sdist + wheels)
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: release-dist-linux-x64
+          pattern: release-dist-*
           path: dist
+          merge-multiple: true
 
       - name: Download staged platform wheels
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
