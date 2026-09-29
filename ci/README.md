@@ -23,6 +23,14 @@ ci/
 ├── dylint.py               # .github/workflows/ci.yml `dylint` job's logic
 ├── platform_build.py       # .github/workflows/ci.yml `platform-build` job's logic
 ├── platform_run.py         # .github/workflows/ci.yml `platform-run` job's logic
+├── init.py                 # .github/workflows/ci.yml `init` job's logic (from-zero suite)
+├── instantiate.py          # template-instantiation helper the `init` job drives
+├── lockfile_changed.py     # cache-maint's Cargo.lock/uv.lock/rust-toolchain.toml diff check
+├── plan_profile.py         # ci-precheck.yml: derives is-release/profile from plan.flow
+├── release_guard.py        # .github/workflows/ci.yml `release-guard` job's logic
+├── release.py               # .github/workflows/ci.yml `release-linux-x64`/`release-verify` jobs' logic
+├── perf.py                  # .github/workflows/ci.yml `perf` job's logic
+├── perf_pyo3_bench.py       # inner PyO3-call timing loop `perf.py bench` runs via the built venv
 ├── ci_ok.py                # .github/workflows/ci.yml `ci-ok` job's logic
 └── hooks/                 # agent-intent guards (run by Claude Code)
     ├── tool_guard.py
@@ -70,7 +78,37 @@ step (CLAUDE.md rule 6):
   declared test binary directly (setting `CARGO_BIN_EXE_template-cli` for
   `template-cli:test:cli`, which reads it at runtime), then a clean-venv
   wheel install + smoke, then `tests/integration/` when that suite is
-  selected for this lane.
+  selected for this lane. Round 5 adds `wheel-install --smoke-out
+  <path>`: always writes a `smoke-results/<lane>.json` record, uploaded
+  as an artifact only when `is-release`.
+- **`plan_profile.py`** (round 5) — one `ci-precheck.yml` step: derives
+  `is-release`/`profile` (`release`/`dev`) from `ci_lint plan`'s own
+  `plan.flow`, so `release-guard`/`release-linux-x64`/`platform-build`/
+  `platform-run`'s `--profile` arguments never repeat the `flow ==
+  'release' || flow == 'nightly'` ternary inline in a `run:` line
+  (GEN-005 flags `&&`/`||` there even inside a `${{ }}` expression).
+- **`release_guard.py`** (round 5) — the exact-SHA guard: on
+  `workflow_dispatch`, the checked-out commit must equal `inputs.sha` and
+  be reachable from `main`; a no-op on every other event (a `[release]`
+  PR rehearsal, or `nightly`, has no `inputs.sha` to pin against).
+- **`release.py`** (round 5) — linux-x64's sdist + release-profile wheel
+  (`build`), its native install smoke (`smoke`, writes `smoke-results/
+  linux-x64.json`), and `collect-wheels` (merges `platform_build.py`'s
+  staged cross-platform wheels into one flat `dist/` for `release-
+  verify`). See its module docstring for a real, reproduced upstream
+  soldr/maturin limitation this module works around: the wheel is built
+  directly from the working tree, not from the sdist (`uv build`'s
+  sdist-then-wheel path fails — maturin's sdist-trimmed workspace
+  `Cargo.toml` drops `template-cli`, a `bundle-bins` sibling with no
+  Cargo dependency edge to the extension crate).
+- **`perf.py`** / **`perf_pyo3_bench.py`** (round 5) — `perf.py bench`
+  builds a release-profile wheel, installs it into a clean venv, then
+  times `template-cli --version` startup and (via `perf_pyo3_bench.py`,
+  run BY that venv's own python) one PyO3 call, writing a typed
+  `BenchmarkFile` JSON (AGENTS.md's dataclass rule). `perf.py
+  fetch-baseline` pulls the latest successful `main`/nightly
+  `perf-results` artifact through the REST API (stdlib `urllib`,
+  `GITHUB_TOKEN`); "no baseline yet" is reported, never a failure.
 
 ## Two halves: gates vs. hooks
 
@@ -99,10 +137,11 @@ contract, §13):
   517 backend builds and stages `template-cli` itself, as part of the
   normal `uv build` / `uv sync` wheel build.
 - **`publish.py`** wrapped `twine upload` behind a hand-flipped
-  `_ENABLED` guard. This repo's release publish step will be a soldr
-  OIDC-trusted-publish **mock** (proves the identity, stops before
-  upload) — not yet implemented; see `docs/RELEASE.md` and
-  zackees/ci.yml#6 round 5.
+  `_ENABLED` guard. Round 5 implements the real replacement, but there is
+  still no `ci/publish.py`: the `publish` job in `.github/workflows/
+  ci.yml` calls `python3 -m ci_lint publish oidc-check` directly (mints
+  the OIDC token, asserts its claims, stops before upload — see
+  `docs/RELEASE.md`) — no wrapper script needed on this side.
 
 `ci/gates/*.py` must never call bare `cargo`/`rustc`/`maturin` — every
 Rust or wheel command goes through `soldr` (`soldr cargo ...`, `soldr

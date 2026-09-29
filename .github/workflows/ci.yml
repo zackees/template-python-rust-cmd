@@ -556,6 +556,18 @@ jobs:
           path: .ci-lint
           persist-credentials: false
 
+      # NOT `cross-target: x86_64-unknown-linux-gnu` -- tried and reverted
+      # (round-5 finding, see ci/release.py's `cmd_build` docstring):
+      # soldr deliberately does NOT mount a cross sysroot when the
+      # requested target equals the host ("any host-target build --
+      # `--target` omitted or equal to the host: `pypi`" per soldr's own
+      # docs' platform-tags table) -- a host build always gets the
+      # runner's own real glibc-derived tag (`manylinux_2_34_x86_64` on
+      # `ubuntu-24.04`, confirmed live: run 36510818002, job
+      # 109222847723), and soldr will not claim a floor it didn't
+      # enforce ("a manylinux_2_17 tag there would be a claim nothing
+      # backed"). `ci.toml [platforms.linux-x64].wheel` is corrected to
+      # the measured tag instead of chasing an unreachable one.
       - name: Setup soldr (release profile)
         uses: ./.github/actions/soldr
         with:
@@ -572,7 +584,7 @@ jobs:
         with:
           save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
 
-      - name: Build sdist + release-profile wheel (Soldr PEP 517 backend, from the sdist)
+      - name: Build sdist + release-profile wheel (Soldr PEP 517 backend, from the working tree)
         id: release-build
         run: python3 ci/release.py build --out dist/release-linux-x64
 

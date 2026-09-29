@@ -115,18 +115,37 @@ def _make_executable(path: Path) -> None:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
+    """`--target <triple>` -- unused by `.github/workflows/ci.yml` today
+    (kept for a future cross-built linux-x64 leg), but NOT the fix for
+    this round's tag-mismatch finding: a plain HOST build of linux-x64
+    tags itself `manylinux_2_34_x86_64` (confirmed live: run 36510818002,
+    job 109222847723 -- maturin's real symbol-version scan of the actual
+    linked binary, not simply the runner's installed glibc). Passing
+    `--target x86_64-unknown-linux-gnu` (same triple as the host) was
+    tried and reverted: soldr's own docs are explicit that it does NOT
+    mount a cross sysroot when the requested target equals the host --
+    "any host-target build (`--target` omitted or equal to the host):
+    `pypi`" (soldr's platform-tags table) -- specifically because a false
+    `manylinux_2_17` claim on a host build "would be a claim nothing
+    backed" (pip installs such a wheel on an old host and it then dies
+    with `GLIBC_2.39' not found`). **Decision**: `ci.toml
+    [platforms.linux-x64].wheel` is corrected to the measured
+    `manylinux_2_34` instead of chasing an unreachable `manylinux_2_17`
+    for a host-arch build on `ubuntu-24.04`."""
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     rc = _run_isolated_soldr(["uv", "build", "--sdist", "--out-dir", str(out_dir)])
     if rc != 0:
         return rc
+    wheel_config_settings = ["--config-setting", "profile=release"]
+    if args.target:
+        wheel_config_settings += ["--config-setting", f"target={args.target}"]
     rc = _run_isolated_soldr(
         [
             "uv",
             "build",
             "--wheel",
-            "--config-setting",
-            "profile=release",
+            *wheel_config_settings,
             "--out-dir",
             str(out_dir),
         ]
@@ -247,6 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("build")
+    p.add_argument("--target", default=None)
     p.add_argument("--out", required=True)
     p.set_defaults(func=cmd_build)
 
