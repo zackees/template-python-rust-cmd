@@ -24,16 +24,54 @@ action's own `inputs:`, so a caller cannot override them even by accident.
 
 - `zackees/setup-soldr@c0b72703f3896ff66d4878b115365dceff3c7288` (`v0.9.81`,
   the newest tagged release as of 2026-09-28). `v0` (the major-version
-  moving tag) currently resolves to the SAME commit
-  (`67ed4018aca013f8388050ac9bc264244f9b742c` was an earlier `v0` snapshot;
-  by the time this wrapper was written `v0.9.80` was newest and was chosen
-  over pinning to a moving major tag, per `RUST-001`/`SEC-004`: every
-  action reference is a full commit SHA with a version comment, never a
-  branch or moving tag).
+  moving tag) still resolves to `67ed4018aca013f8388050ac9bc264244f9b742c`
+  (the commit `v0.9.80` pointed at) as of this writing — `v0.9.81`'s
+  promotion needs a downstream FastLED/fbuild canary run that had not
+  landed yet — so this pin is intentionally one commit ahead of `v0` for
+  now, per `RUST-001`/`SEC-004`: every action reference is a full commit
+  SHA with a version comment, never a branch or moving tag.
 - `version: "0.9.25"` (the `soldr` binary itself) matches
   `pyproject.toml`'s `requires = ["soldr==0.9.25"]` — the PEP 517 backend's
   own pin — so the CLI used by `./ci.sh`/CI steps and the backend used by
   `uv build`/`uv sync` are the exact same Soldr release.
+
+## Dylint cache fix validation (setup-soldr#538, v0.9.81)
+
+Before `v0.9.81`, setup-soldr compared Dylint's success marker and looked
+up Dylint output paths using the short, requested toolchain channel (e.g.
+`nightly-2026-05-28`), while soldr's own Dylint plan is host-qualified
+(e.g. `nightly-2026-05-28-x86_64-unknown-linux-gnu`). The exact-string
+mismatch meant `dylint-cache` and `dylint-output-cache` were never saved
+on a successful Dylint run — every run recomputed the lint from scratch.
+
+- **Pre-fix warm baseline** (`v0.9.80`, PR run
+  [36495222596](https://github.com/zackees/template-python-rust-cmd/actions/runs/36495222596)):
+  `dylint-cache: no matching successful Dylint marker - skipping save`,
+  `dylint-output-cache: Dylint did not complete successfully - skipping
+  save`. `dylint (all declared targets)` job wall time 2m33s; 6 Dylint
+  passes totaling 91.7s of lint work.
+- **Post-fix, first `main` push after ingesting `v0.9.81`** (run
+  [36501247176](https://github.com/zackees/template-python-rust-cmd/actions/runs/36501247176)):
+  `dylint-cache: saved id=8239364944
+  key=setup-soldr-dylint-v2-linux-x64-x86_64-unknown-linux-gnu-d153183e2b438407-dylint`
+  (668,506,333 bytes uploaded), `dylint-output-cache: saved
+  id=8239367155 key=setup-soldr-dylint-output-v1-linux-x64-19a07e71336de272`
+  (74,568,687 bytes uploaded).
+- **Post-fix, this PR's own run** (run
+  [36501659725](https://github.com/zackees/template-python-rust-cmd/actions/runs/36501659725),
+  a *new* commit): `dylint-cache: hit=true matched=...-dylint` (the
+  toolchain/driver-scoped foundation cache — exact hit, as expected for
+  any commit using the same Dylint toolchain). `dylint-output-cache:
+  hit=false` — **expected**, not a regression: `dylintOutputHash`
+  (`src/lib/resolve-setup.ts`, unchanged by #539) has always included
+  `source_revision: githubSha`, so this per-commit-scoped cache only
+  hits when the exact same commit re-runs. Job wall time 2m05s.
+- **Post-fix, same-commit re-run** (`gh run rerun` of run 36501247176 on
+  its unchanged commit `021a5971ae88569d6b965b7acdb2ee3003eb5f99`):
+  `dylint-cache: hit=true` and `dylint-output-cache: hit=true`, both
+  logging `exact hit - skipping save`. Job wall time 1m58s, vs. the
+  pre-fix warm baseline's 2m33s — about 35s (23%) faster wall time on a
+  fully warm, same-commit run now that both caches actually restore.
 
 ## Inputs
 
