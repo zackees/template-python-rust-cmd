@@ -33,7 +33,7 @@ action's own `inputs:`, so a caller cannot override them even by accident.
 - No `version:` input is set for the `soldr` binary itself
   ([zackees/ci.yml#18](https://github.com/zackees/ci.yml/issues/18),
   `RUST-013`): it floats on `setup-soldr`'s own latest-release resolution,
-  matching `pyproject.toml`'s floor-only `requires = ["soldr>=0.9.25"]` —
+  matching `pyproject.toml`'s floor-only `requires = ["soldr>=0.9.26"]` —
   the PEP 517 backend's own requirement — so the CLI used by
   `./ci.py`/CI steps and the backend used by `uv build`/`uv sync` always
   resolve to the same current Soldr release, without a stale exact pin
