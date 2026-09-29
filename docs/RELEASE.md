@@ -144,6 +144,49 @@ for every assertion → (eventually) a real trusted-publish upload. Until
 then, treat any release as a manual, out-of-band process and record what
 you did in the PR/issue, not in this file.
 
+## Dry-run readback and resume (zackees/ci.yml#8/#74, REL-003/004/005)
+
+The mimalloc-pprof v1.0.1 exact-SHA release pilot
+([zackees/ci.yml#8](https://github.com/zackees/ci.yml/issues/8)) hit
+four latent publisher bugs, all on the real (non-dry) publish path. Two
+of the lessons are now wired into `release-verify`:
+
+- **REL-003 (readback)**: `release-verify` runs `ci/release.py
+  mock-publish` (writes every staged artifact into a throwaway
+  `${{ runner.temp }}/mock-registry` dir — standing in for the real
+  publisher's destination) and then `ci/release.py mock-readback`
+  (reads each artifact BACK from that registry, never from `dist/`
+  directly, and writes `readback/<artifact>.json`:
+  `{"path", "sha256", "read_back": true}`). `ci-lint release verify
+  --readback readback` fails if any artifact's readback record is
+  missing or its digest disagrees with the staged one — proof the dry
+  run exercised the destination's *read* path, the exact class of bug
+  mimalloc-pprof#562 was (`GET .../releases/tags/{tag}` 404s for a
+  draft; only the paged list endpoint includes drafts).
+- **REL-004 (resume)**: `workflow_dispatch` takes an optional
+  `resume_from_run` input — a prior `release-verify` run id. When set,
+  `release-verify` downloads that run's `release-dist-verified` artifact
+  (which includes `release-manifest.json`) into `frozen/` and passes
+  `--resume frozen/release-manifest.json` to `ci-lint release verify`.
+  Every artifact path frozen in that manifest must still be staged with
+  the IDENTICAL sha256 — this repo's release-profile builds are **not**
+  byte-reproducible (mimalloc-pprof#564/#565), so a same-SHA re-dispatch
+  that rebuilds is EXPECTED to fail this check; that failure is the
+  point; it proves ci-lint refuses to (re)publish silently-rebuilt
+  bytes. Actually reusing the frozen bytes on a real resume (rather than
+  failing loudly and stopping) still requires restoring them from a
+  retained `release-dist-verified`/`release-preflight-<sha>` artifact by
+  hand or a follow-up automation change — out of this round's scope.
+- **REL-005 (no-rebuild publish)**: `ci_lint.rules.release_gate.
+  check_rel_005` (static) would flag a `ci/*release*publish*.py` script
+  that rebuilds instead of downloading by run id. This repo's `publish`
+  job already only ever downloads `release-dist-verified` (an
+  `actions/download-artifact` step) and never calls a build tool itself,
+  so it satisfies the rule's intent by construction — there is no
+  standalone `ci/release_publish.py` in this repo for the static scanner
+  to check, so REL-005 is proven at the design level here, not by a
+  precheck finding.
+
 ## Perf suite
 
 `[ci-perf]` (or `flow.release`/`flow.nightly`'s `suites = "all"`) runs
