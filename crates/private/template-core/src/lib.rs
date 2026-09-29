@@ -32,26 +32,6 @@ pub fn run_cli() -> anyhow::Result<()> {
     Ok(())
 }
 
-// DELIBERATE VIOLATION (round 2F, run 3): a host `#[cfg]` outside the one
-// allowed selector file (crates/private/template-platform/src/lib.rs) and
-// outside its platforms/** tree. Must fail the `platform_boundary` Dylint
-// Deny lint even though dylint-output-cache restores via an exact hit here
-// (unchanged Cargo.lock) -- a restored cache must never hide a newly
-// introduced violation in freshly checked-out source. Split across lines so
-// ci-lint's cheap single-line LAYOUT-001 regex (`ci_lint/rules/layout.py`,
-// `RUST_CFG_RE.search(line) and any(sel in line ...)`) does not also catch
-// it on the same physical line -- this run specifically exercises Dylint's
-// own pre-expansion, whitespace-collapsing scan
-// (`dylints/platform_boundary/src/lib.rs`'s `compact` string), which is
-// exactly why the fleet runs both a cheap static check AND Dylint on every
-// PR (soldr#3284's lesson, ci.yml#6 §1). Reverted after run 3.
-#[cfg(
-    windows
-)]
-pub fn windows_only_marker() -> &'static str {
-    "windows-only"
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
