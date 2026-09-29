@@ -142,7 +142,9 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      actions: read
+      # `write` (not `read`): round-4C's `ci_lint cache trim` step below
+      # needs to delete entries; `write` covers `read` for the same scope.
+      actions: write
     outputs:
       plan: ${{ steps.plan.outputs.plan }}
       platforms_json: ${{ steps.plan.outputs.platforms_json }}
@@ -217,3 +219,17 @@ jobs:
         env:
           PLAN_JSON: ${{ steps.plan.outputs.plan }}
         run: python3 ci/plan_profile.py
+
+      # Round-4C (ci.yml#6 §6 "Precheck trims"). Same-repo PR events only
+      # (a fork PR's GITHUB_TOKEN can't delete another ref's cache entries
+      # -- ci_lint cache trim already fails safe on that, but skipping the
+      # attempt outright avoids a noisy, guaranteed-401 API call on every
+      # fork PR push). Deletes CACHE-008 entries only (closed/merged-PR
+      # deltas + stale-base deltas), capped at 20/run so precheck stays
+      # fast; the nightly janitor (cache-maint, schedule) picks up the rest.
+      - name: Trim stale PR compile-delta cache entries
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          PYTHONPATH: .ci-lint
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -m ci_lint cache trim --repo . --max-deletes 20
