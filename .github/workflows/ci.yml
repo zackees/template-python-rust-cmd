@@ -183,12 +183,12 @@ jobs:
           # fingerprinting even without this flag, so there was nothing
           # left for mtime preservation to improve (fast 82s vs. 75s
           # baseline, dylint 51s vs. 49s -- a wash, not a win). The
-          # round's own criterion is "correct AND faster"; left off
-          # pending a probe shaped to actually exercise the spurious-
-          # invalidation case (e.g. editing a leaf crate nothing depends
-          # on, or a same-commit re-run) -- see this action's own
-          # `preserve-source-mtimes` input doc for what the flag does.
-          preserve-source-mtimes: "false"
+          # round's own criterion is "correct AND faster"; re-probed in
+          # ci.yml#41 (round M2-16) with a leaf-crate edit (template-cli,
+          # which nothing else in the workspace depends on) plus a
+          # same-commit rerun -- see docs/case-studies/
+          # template-python-rust-cmd.md in zackees/ci.yml for the result.
+          preserve-source-mtimes: "true"
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
@@ -368,7 +368,8 @@ jobs:
           save-cache: ${{ needs.precheck.outputs.cache_save }}
           # Round-4C (ci.yml#6 §6 D3): see the `fast` job's Setup soldr
           # step for what this measured (correct, but not faster here).
-          preserve-source-mtimes: "false"
+          # Re-probed in ci.yml#41 (round M2-16); see that step's comment.
+          preserve-source-mtimes: "true"
 
       - name: Dylint -- host + every declared cross target
         run: python3 ci/dylint.py --shape multi-target --results-out ${{ runner.temp }}/dylint-results.json
