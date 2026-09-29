@@ -40,12 +40,13 @@ staged wheel's bundled native CLI + PyO3 extension (`readelf -V`,
 falling back to `objdump -T`) for the actual maximum `GLIBC_X.Y`
 version-need string and fails if it exceeds the floor — proof from the
 artifact's own bytes, not just the filename. Both `linux-x64` and
-`linux-arm64` route through Soldr's controlled manylinux_2_17 cross
-sysroot to hit it: `linux-arm64` via `platform-build`'s ordinary cross
-target, `linux-x64` via `release-linux-x64` passing `cross-target:
-x86_64-unknown-linux-gnu` to `.github/actions/soldr` (same arch as the
-`ubuntu-24.04` host, but through the sysroot instead of the runner's own
-newer glibc).
+`linux-arm64` are built by `soldr wheel --release`, which links every
+`*-linux-gnu` release wheel against soldr's catalogue glibc-2.17
+toolchain, host target included (zackees/soldr#3432):
+`linux-arm64` as `platform-build`'s cross target, and `linux-x64` as a
+host-target build in `release-linux-x64`. The earlier
+`cross-target: x86_64-unknown-linux-gnu` workaround is gone
+(template-python-rust-cmd#39).
 
 **This floor is release-scope only.** The `fast` lane's PR-smoke wheel
 (`ci/fast.py wheel-build`) stays a plain host build — untagged against
