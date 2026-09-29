@@ -207,10 +207,12 @@ setup-uv          = { require = { save-cache = "plan" } }
 # Round-4B (SEC-002 refinement): top-level permissions are capped at
 # contents:read + actions:read (free on every job too, no entry needed);
 # any wider per-job grant must be listed here by job id. `cache-maint`
-# (deliverable 4) is the only job in this repo that needs `actions: write`
-# (cache preprune/janitor deletes); no `publish` job exists yet, so
-# `id-token: write` is not granted to anything.
-permissions       = { "actions: write" = ["cache-maint"] }
+# (deliverable 4) needs `actions: write` (cache preprune/janitor deletes).
+# Round-5 (deliverable 3): `publish` needs `id-token: write` to mint the
+# OIDC mock-publish token -- SEC-002 additionally always requires that
+# grant be paired with `environment: pypi` on the `publish` job
+# specifically, allowlisted here or not.
+permissions       = { "actions: write" = ["cache-maint"], "id-token: write" = ["publish"] }
 tools             = ["soldr", "uv", "python3", "yq", "git"]
 secrets           = []
 platform-selector = "crates/private/template-platform/src/lib.rs"   # the ONE file allowed to select on host

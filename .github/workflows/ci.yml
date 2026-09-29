@@ -329,15 +329,27 @@ jobs:
           ci-tests: "true"
           cross-target: ${{ matrix.lane.target }}
           cache-key-suffix: platform-build
-          save-cache: ${{ needs.precheck.outputs.cache_save }}
+          # Round 5: on `release`/`nightly` (is-release), this leg builds
+          # a RELEASE-profile wheel (zackees/ci.yml#6 deliverable 2) --
+          # setup-soldr's own key digest already covers "profile" (issue
+          # #6 §9's cache-strategy notes), so restoring against a
+          # dev-profile key here is a natural miss, never a corrupt hit.
+          prebuild-deps-flags: ${{ needs.precheck.outputs.is-release == 'true' && '--release' || '' }}
+          # Never saved for a release-profile compile: CACHE-004's budget
+          # proof only accounts for one profile's worth of `deps`/
+          # `compile` cardinality per platform (ci.toml [cache.family]).
+          # This expression stays "plan"-shaped (CACHE-009) -- it always
+          # evaluates false when is-release, and otherwise is identical to
+          # every other job's plain cache_save passthrough.
+          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          save-cache: ${{ needs.precheck.outputs.cache_save }}
+          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
 
       - name: Build + capture compiler-artifact JSON (cross target)
-        run: python3 ci/platform_build.py build-json --target ${{ matrix.lane.target }} --out ${{ runner.temp }}/cargo-messages.jsonl
+        run: python3 ci/platform_build.py build-json --target ${{ matrix.lane.target }} --profile ${{ needs.precheck.outputs.profile }} --out ${{ runner.temp }}/cargo-messages.jsonl
 
       - name: ci_lint units (compile-unit discipline, RUST-011/RUST-012, cross target)
         env:
@@ -351,7 +363,7 @@ jobs:
 
       - name: Build wheel (Soldr PEP 517 backend, cross target via config setting)
         id: wheel-build
-        run: python3 ci/platform_build.py wheel-build --target ${{ matrix.lane.target }} --out dist/platform-${{ matrix.lane.id }}
+        run: python3 ci/platform_build.py wheel-build --target ${{ matrix.lane.target }} --profile ${{ needs.precheck.outputs.profile }} --out dist/platform-${{ matrix.lane.id }}
 
       - name: ci_lint wheel check (PKG-003/004/005, static, cross target -- fail fast before upload)
         env:
@@ -434,9 +446,14 @@ jobs:
         if: contains(matrix.lane.suites, 'unit')
         run: python3 ci/platform_run.py run-tests --artifact-dir ${{ runner.temp }}/stage --results-out ${{ runner.temp }}/platform-run-results.json
 
+      # `--smoke-out` is always passed (harmless on a non-release run --
+      # `smoke-results/<lane>.json` is written but never uploaded, see the
+      # "Upload release smoke result" step below): one code path in
+      # ci/platform_run.py regardless of which flow invoked it (round 5,
+      # deliverable 2).
       - name: Clean-venv wheel install (floor Python)
         id: wheel-install
-        run: python3 ci/platform_run.py wheel-install --artifact-dir ${{ runner.temp }}/stage --venv .venv-smoke --python 3.11
+        run: python3 ci/platform_run.py wheel-install --artifact-dir ${{ runner.temp }}/stage --venv .venv-smoke --python 3.11 --smoke-out smoke-results/${{ matrix.lane.id }}.json
 
       - name: ci_lint wheel check (PKG-003/004/005, static, downloaded artifact)
         # Explicit `bash` (allowed by GEN-005; only pwsh/cmd/powershell are
@@ -458,9 +475,306 @@ jobs:
           PYTHONPATH: .ci-lint
         run: python3 -m ci_lint wheel installed --repo . --venv .venv-smoke
 
+      # Round 5 (deliverable 2): only actually uploaded on a
+      # release/nightly run -- `release-verify` (`ci-lint release verify
+      # --smoke smoke-results`) is the only consumer.
+      - name: Upload release smoke result
+        if: needs.precheck.outputs.is-release == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-smoke-${{ matrix.lane.id }}
+          path: smoke-results/${{ matrix.lane.id }}.json
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Integration suite (ci.toml [suites].integration, when selected)
         if: contains(matrix.lane.suites, 'integration')
         run: python3 ci/platform_run.py integration-test --venv .venv-smoke
+
+  # Round 5 (zackees/ci.yml#6 deliverable 1): the exact-SHA release guard
+  # (ci/release_guard.py). `is-release` (precheck's derived output, see
+  # ci/plan_profile.py) covers every context that wants release-profile
+  # wheels -- a `[release]` PR rehearsal, `nightly`, and a real
+  # `workflow_dispatch` -- not just `github.event_name ==
+  # 'workflow_dispatch'`: the script itself is a documented no-op for the
+  # first two (no `inputs.sha` to pin against there), and every
+  # downstream release job depends on THIS job's result rather than
+  # re-deriving the event check itself.
+  release-guard:
+    name: release-guard
+    needs: [precheck, cache-maint]
+    # See `fast`'s identical condition comment above (cache-maint tolerance).
+    if: ${{ !cancelled() && !failure() && needs.precheck.outputs.is-release == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact candidate commit (fetch-depth 0 -- merge-base needs full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Exact-SHA guard (issue #6 §3, ci.yml#4)
+        env:
+          RELEASE_GUARD_EVENT: ${{ github.event_name }}
+          RELEASE_GUARD_SHA: ${{ github.event.inputs.sha || '' }}
+        run: python3 ci/release_guard.py
+
+  # Round 5 (deliverable 2): the ONE platform `plan.platform_lanes` never
+  # covers -- it excludes `[flow.pr]`'s own default fast-lane platform
+  # (linux-x64) by construction, so the release flow's wheel matrix needs
+  # it built somewhere else. **Decision** (see ci/release.py's module
+  # docstring): its own dedicated job, rather than teaching ci_lint's
+  # planner to special-case the release flow's platform-lane set --  that
+  # would touch the pinned `ci_lint` package (zackees/ci.yml), out of this
+  # round's repo scope.
+  release-linux-x64:
+    name: release-linux-x64
+    needs: [precheck, cache-maint, release-guard]
+    if: ${{ !cancelled() && !failure() && needs.release-guard.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout exact candidate commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.sha || github.sha }}
+
+      # Skipped under act -- see `fast`'s identical step for why.
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        if: env.ACT != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: db0be5c8cea71c12b31493a994e874e87f76390c
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Setup soldr (release profile)
+        uses: ./.github/actions/soldr
+        with:
+          ci-tests: "true"
+          prebuild-deps-flags: "--release"
+          cache-key-suffix: "release"
+          # Never saved -- see platform-build's identical note (CACHE-004
+          # budget proof doesn't account for a second, release-profile
+          # generation of `deps`/`compile`).
+          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+
+      - name: Build sdist + release-profile wheel (Soldr PEP 517 backend, from the sdist)
+        id: release-build
+        run: python3 ci/release.py build --out dist/release-linux-x64
+
+      - name: ci_lint wheel check (PKG-003/004/005, static)
+        env:
+          PYTHONPATH: .ci-lint
+          WHEEL_PATH: ${{ steps.release-build.outputs.wheel-path }}
+        run: python3 -m ci_lint wheel check --repo . --wheel "$WHEEL_PATH"
+
+      - name: Native install smoke (writes smoke-results/linux-x64.json)
+        run: python3 ci/release.py smoke --wheel-dir dist/release-linux-x64 --platform-id linux-x64 --venv .venv-release-smoke --python 3.11 --out smoke-results/linux-x64.json
+
+      - name: Upload release dist (sdist + linux-x64 wheel)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dist-linux-x64
+          path: dist/release-linux-x64
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload release smoke result
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-smoke-linux-x64
+          path: smoke-results/linux-x64.json
+          retention-days: 1
+          if-no-files-found: error
+
+  # Job id MUST be exactly "release-verify" (ci_lint gate's required-job-id
+  # convention: required when `plan.publish` is `rehearsal` or `mock`).
+  # Downloads every staged wheel + the linux-x64 sdist and every
+  # platform's smoke result, merges them into one `dist/`/`smoke-results/`
+  # pair, then `ci-lint release verify` (PKG-006, issue #6 §3/ci.yml#4).
+  release-verify:
+    name: release-verify
+    needs: [precheck, release-guard, release-linux-x64, platform-build, platform-run]
+    if: ${{ !cancelled() && !failure() && fromJSON(needs.precheck.outputs.plan).publish != 'none' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact candidate commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.sha || github.sha }}
+
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: db0be5c8cea71c12b31493a994e874e87f76390c
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Download linux-x64 release dist (sdist + wheel)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist-linux-x64
+          path: dist
+
+      - name: Download staged platform wheels
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: platform-*
+          path: ${{ runner.temp }}/platform-staged
+
+      - name: Download release smoke results (every platform)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-smoke-*
+          path: smoke-results
+          merge-multiple: true
+
+      - name: Collect cross-platform wheels into dist/
+        run: python3 ci/release.py collect-wheels --staged-dir ${{ runner.temp }}/platform-staged --dist-dir dist
+
+      - name: ci_lint release verify (PKG-006)
+        env:
+          PYTHONPATH: .ci-lint
+          RELEASE_SHA: ${{ github.event.inputs.sha || github.sha }}
+        run: python3 -m ci_lint release verify --repo . --dist dist --sha "$RELEASE_SHA" --smoke smoke-results
+
+      - name: Upload verified release dist (wheels + sdist + release-manifest.json)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dist-verified
+          path: dist
+          retention-days: 1
+          if-no-files-found: error
+
+  # Job id MUST be exactly "publish" (ci_lint gate's required-job-id
+  # convention: required when `plan.publish` is `mock`, which -- per
+  # ci.toml -- only ever happens on a real `workflow_dispatch` (the
+  # `[release]` PR-rehearsal tag overrides `publish` to `rehearsal`, never
+  # `mock`, so this job never runs on a PR and never requests an
+  # `id-token`). Lives directly in ci.yml, NOT a reusable workflow --
+  # PyPI trusted publishing requires the publishing workflow to be the
+  # top-level one (warehouse#11096; issue #6 §7). Mock only: mints the
+  # OIDC token, asserts its claims, and stops before any upload -- the
+  # raw token is never printed, logged, or written anywhere in this job
+  # (ci_lint.publish_oidc's own NeverPrintsTokenTest covers this at the
+  # ci_lint layer; the round's worker report greps this job's own log for
+  # the `eyJ` JWT prefix and shows zero hits).
+  publish:
+    name: publish
+    needs: [precheck, release-verify]
+    if: ${{ !cancelled() && !failure() && fromJSON(needs.precheck.outputs.plan).publish == 'mock' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.sha || github.sha }}
+
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: db0be5c8cea71c12b31493a994e874e87f76390c
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Download verified release dist (evidence only -- oidc-check reads no artifact)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist-verified
+          path: dist
+
+      - name: OIDC mock publish (mints + asserts claims, stops before upload)
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 -m ci_lint publish oidc-check --repo . --audience pypi --expect-ref refs/heads/main --expect-event workflow_dispatch
+
+  # Job id MUST be exactly "perf" (ci_lint gate's required-job-id
+  # convention: required whenever the `perf` suite is selected --
+  # `[ci-perf]`/`[ci-perf][no-test]`, or `flow.release`/`flow.nightly`'s
+  # `suites = "all"`). Must succeed even though `ci.toml [suites.perf]
+  # gating = false` -- gating only decides whether a regression fails the
+  # comparison step, never whether this job itself is required.
+  perf:
+    name: perf
+    needs: [precheck, cache-maint]
+    if: ${{ !cancelled() && !failure() && contains(fromJSON(needs.precheck.outputs.suites_json), 'perf') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: db0be5c8cea71c12b31493a994e874e87f76390c
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Setup soldr (release profile)
+        uses: ./.github/actions/soldr
+        with:
+          ci-tests: "true"
+          prebuild-deps-flags: "--release"
+          cache-key-suffix: "perf"
+          # Never saved -- see release-linux-x64's identical note.
+          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+
+      - name: Run benchmark (CLI startup xN, PyO3 call xM; release profile)
+        run: python3 ci/perf.py bench --wheel-dir ${{ runner.temp }}/perf-wheel --venv ${{ runner.temp }}/.venv-perf --python 3.11 --out ${{ runner.temp }}/perf-current.json
+
+      - name: Fetch baseline (latest successful main/nightly perf-results artifact)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 ci/perf.py fetch-baseline --repo ${{ github.repository }} --out ${{ runner.temp }}/perf-baseline.json
+
+      - name: ci_lint perf compare (non-gating unless ci.toml says otherwise)
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 -m ci_lint perf compare --repo . --baseline ${{ runner.temp }}/perf-baseline.json --current ${{ runner.temp }}/perf-current.json
+
+      - name: Upload perf results (perf-results -- also the next run's fetch-baseline source)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: perf-results
+          path: ${{ runner.temp }}/perf-current.json
+          retention-days: 1
+          if-no-files-found: error
 
   # Job id MUST be exactly "init" (ci_lint gate's required-job-id
   # convention, zackees/ci.yml@db0be5c: required when the `init` suite is
@@ -530,7 +844,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [precheck, fast, dylint, platform-build, platform-run, init]
+    needs: [precheck, fast, dylint, platform-build, platform-run, init, release-verify, publish, perf]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
