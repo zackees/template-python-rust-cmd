@@ -15,8 +15,7 @@ linter  = "zackees/ci.yml@665379279c00bad5f82c627306882e2649d88974"      # the e
 # every `*-linux-gnu` release wheel, host target included, against
 # soldr's catalogue glibc-2.17 toolchain (zackees/soldr#3432,
 # template-python-rust-cmd#39); `ci/release.py glibc-check` measures it
-# from the artifact's own bytes. See the round's
-# worker report. The `fast` lane's dev-profile wheel stays host-native
+# from the artifact's own bytes. The `fast` lane's dev-profile wheel stays host-native
 # (untagged manylinux floor) for iteration speed; only release/verify
 # artifacts are held to this floor -- see docs/RELEASE.md.
 [platforms]
