@@ -94,6 +94,26 @@ on:
       dylint_reused:
         description: '"true"/"false" -- whether the dylint lane is a verified reuse candidate.'
         value: ${{ jobs.precheck.outputs.dylint_reused }}
+      is-release:
+        description: >-
+          "true"/"false" -- round 5: whether `plan.flow` is `release` or
+          `nightly` (the only two flows that build the full release-profile
+          wheel matrix -- ci.toml [flow.release]/[flow.nightly]). Derived by
+          `ci/plan_profile.py` from `plan.flow` (never re-derives flow
+          selection itself). Reused by `release-guard`, `release-linux-x64`,
+          and `platform-build`/`platform-run`'s profile selection instead of
+          repeating the `fromJSON(plan).flow == 'release' || ...` expression
+          at each call site.
+        value: ${{ jobs.precheck.outputs.is-release }}
+      profile:
+        description: >-
+          "release"/"dev" -- round 5: the plain string form of `is-release`
+          (never `is-release == 'true' && 'release' || 'dev'`, which
+          GEN-005's shell-budget scan flags textually inside a `run:`
+          line's own expression -- see ci/plan_profile.py). Every
+          `--profile` CLI argument in `.github/workflows/ci.yml` binds to
+          this directly.
+        value: ${{ jobs.precheck.outputs.profile }}
       cache_save:
         description: >-
           "true"/"false" = (plan.cache_mode == "write") -- round-4B. Every
@@ -138,6 +158,8 @@ jobs:
       platform_lanes_todo_json: ${{ steps.plan.outputs.platform_lanes_todo_json }}
       fast_reused: ${{ steps.plan.outputs.fast_reused }}
       dylint_reused: ${{ steps.plan.outputs.dylint_reused }}
+      is-release: ${{ steps.release-profile.outputs.is-release }}
+      profile: ${{ steps.release-profile.outputs.profile }}
       cache_save: ${{ steps.plan.outputs.cache_save }}
     steps:
       - name: Checkout
@@ -153,7 +175,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: db0be5c8cea71c12b31493a994e874e87f76390c
+          ref: a3934dc508ab1921fd5096fc19705b35563f112d
           path: .ci-lint
           persist-credentials: false
 
@@ -186,3 +208,12 @@ jobs:
         # ci-lint's fallback, and behaves identically under `act` (which
         # also sets `GITHUB_EVENT_PATH`, per zackees/ci.yml#6 round-4B).
         run: python3 -m ci_lint plan --repo . --event-name "$EVENT_NAME" --title "$PR_TITLE" --sha "$DISPATCH_SHA" --event "$GITHUB_EVENT_PATH" --github-output --reuse
+
+      # Round 5 (zackees/ci.yml#6 deliverable 2): a repo-local derived
+      # output, not a ci_lint one -- see ci/plan_profile.py's docstring for
+      # why this stays a template-side script rather than a planner change.
+      - name: Derive release-profile flag (round 5)
+        id: release-profile
+        env:
+          PLAN_JSON: ${{ steps.plan.outputs.plan }}
+        run: python3 ci/plan_profile.py

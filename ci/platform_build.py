@@ -94,7 +94,14 @@ def cmd_build_json(args: argparse.Namespace) -> int:
     capturing pure `--message-format=json` compiler-artifact records —
     same shape `ci/fast.py build-json` produces for the host, just with
     `--target` added so the records (and the resulting executables) are
-    this platform's, not the host's."""
+    this platform's, not the host's.
+
+    `--profile release` (round 5, zackees/ci.yml#6 deliverable 2: the
+    `release`/`nightly` flows want release-profile wheels on EVERY
+    platform, not just the dev-profile PR/main default) adds `--release`
+    to the cargo invocation -- the module docstring's "same dev-profile
+    choice" note only ever described the PR/main lanes; it is no longer
+    true unconditionally as of this round."""
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -106,8 +113,10 @@ def cmd_build_json(args: argparse.Namespace) -> int:
         "--no-run",
         "--target",
         args.target,
-        "--message-format=json",
     ]
+    if args.profile == "release":
+        cmd.append("--release")
+    cmd.append("--message-format=json")
     print(f"+ {' '.join(cmd)} > {out_path}", flush=True)
     with out_path.open("w", encoding="utf-8") as fh:
         proc = subprocess.run(cmd, cwd=ROOT, stdout=fh, check=False)
@@ -117,16 +126,21 @@ def cmd_build_json(args: argparse.Namespace) -> int:
 def cmd_wheel_build(args: argparse.Namespace) -> int:
     """Cross-build the wheel through the SAME Soldr PEP 517 backend the
     fast lane uses, targeting `args.target` via a PEP 517 config setting
-    — see the module docstring for why this is NOT `soldr wheel`."""
+    — see the module docstring for why this is NOT `soldr wheel`.
+    `--profile release` adds the matching `profile=release` PEP 517
+    config setting (soldr's own docs: "`pip install . --config-settings
+    profile=release` selects an explicit release profile")."""
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
+    config_settings = ["--config-setting", f"target={args.target}"]
+    if args.profile == "release":
+        config_settings += ["--config-setting", "profile=release"]
     rc = _run_isolated_soldr(
         [
             "uv",
             "build",
             "--wheel",
-            "--config-setting",
-            f"target={args.target}",
+            *config_settings,
             "--out-dir",
             str(out_dir),
         ]
@@ -330,11 +344,13 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("build-json")
     p.add_argument("--target", required=True)
+    p.add_argument("--profile", choices=["dev", "release"], default="dev")
     p.add_argument("--out", required=True)
     p.set_defaults(func=cmd_build_json)
 
     p = sub.add_parser("wheel-build")
     p.add_argument("--target", required=True)
+    p.add_argument("--profile", choices=["dev", "release"], default="dev")
     p.add_argument("--out", required=True)
     p.set_defaults(func=cmd_wheel_build)
 

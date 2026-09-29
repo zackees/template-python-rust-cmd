@@ -190,10 +190,41 @@ def cmd_run_tests(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def _write_smoke_result(
+    out_path: Path, platform_id: str, wheel_name: str, passed: bool, detail: str
+) -> None:
+    """Same `smoke-results/<id>.json` shape `ci/release.py smoke` writes
+    for the `linux-x64` leg (round 5, zackees/ci.yml#6 deliverable 2) --
+    one uniform format `ci-lint release verify --smoke smoke-results`
+    reads for every platform."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        json.dumps(
+            {
+                "platform": platform_id,
+                "wheel": wheel_name,
+                "passed": passed,
+                "detail": detail,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 def cmd_wheel_install(args: argparse.Namespace) -> int:
     """Clean-venv install of the downloaded wheel with the floor Python
     (`[python].pythons[0]`) -- same shape as `ci/fast.py wheel-install`,
-    against a *downloaded* wheel instead of a freshly-built one."""
+    against a *downloaded* wheel instead of a freshly-built one.
+
+    `--smoke-out <path>` (round 5, optional -- always passed by
+    `.github/workflows/ci.yml`, harmless when unused): after install,
+    additionally runs the installed native CLI's `--version` once and
+    writes a `smoke-results/<lane>.json` record. Only actually UPLOADED
+    as an artifact on a release/nightly run (`needs.precheck.outputs.
+    is-release == 'true'`) -- see that job's own upload step -- but
+    always written so this subcommand has one code path regardless of
+    which flow invoked it."""
     artifact_dir = Path(args.artifact_dir)
     manifest = _load_manifest(artifact_dir)
     wheel_rel = manifest.get("wheel")
@@ -232,6 +263,29 @@ def cmd_wheel_install(args: argparse.Namespace) -> int:
     if gh_out:
         with open(gh_out, "a", encoding="utf-8") as fh:
             fh.write(f"wheel-path={wheel_path}\n")
+
+    if args.smoke_out:
+        cli_name = args.cli_name + (".exe" if is_windows() else "")
+        cli_dir = venv_dir / "Scripts" if is_windows() else venv_dir / "bin"
+        cli_path = cli_dir / cli_name
+        passed = False
+        detail = f"installed wheel has no {cli_path}"
+        if cli_path.is_file():
+            if not is_windows():
+                _make_executable(cli_path)
+            proc = subprocess.run([str(cli_path), "--version"], cwd=ROOT, check=False)
+            passed = proc.returncode == 0
+            detail = f"{args.cli_name} --version exit {proc.returncode}"
+        lane_id = manifest.get("lane_id")
+        _write_smoke_result(
+            Path(args.smoke_out),
+            lane_id if isinstance(lane_id, str) else "unknown",
+            wheel_path.name,
+            passed,
+            detail,
+        )
+        print(f"smoke ({lane_id}): passed={passed} ({detail}) -> {args.smoke_out}")
+
     return 0
 
 
@@ -295,6 +349,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--artifact-dir", required=True)
     p.add_argument("--venv", required=True)
     p.add_argument("--python", default="3.11")
+    p.add_argument("--cli-name", default="template-cli")
+    p.add_argument("--smoke-out", default=None)
     p.set_defaults(func=cmd_wheel_install)
 
     p = sub.add_parser("integration-test")
