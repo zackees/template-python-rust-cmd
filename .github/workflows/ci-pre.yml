@@ -312,7 +312,14 @@ jobs:
           path: .ci-lint
           persist-credentials: false
 
+      # Skipped under act (zackees/ci.yml#47): `ci_lint cache budget` needs
+      # GITHUB_TOKEN + GITHUB_REPOSITORY to call the live GitHub Actions
+      # cache API -- act supplies neither. Same "skipped (local), never
+      # treated as passing" treatment the `precheck` job's own
+      # ACT-001/CACHE-005/006/008 checks already get; verify this on
+      # GitHub-hosted CI, not locally.
       - name: Cache budget verdict
+        if: env.ACT != 'true'
         env:
           PYTHONPATH: .ci-lint
           GITHUB_TOKEN: ${{ github.token }}

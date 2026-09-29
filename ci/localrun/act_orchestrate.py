@@ -48,6 +48,59 @@ class ActRunError(RuntimeError):
     pass
 
 
+def _detect_external_git_common_dir(repo_root: Path) -> str | None:
+    """If `repo_root` is a linked git worktree (`ci/local.py act` is run
+    from one, as every M2- round's worker-contract worktree is), its
+    `.git` is a FILE ("gitdir: <absolute path under the main checkout's
+    .git/worktrees/...>"), not a directory. `--container-options`'
+    `--rm`-cleaned-up job containers -- built from a plain `docker cp` of
+    `/work`, not a real clone (verified empirically: `act`'s own log
+    shows "docker cp src=/work/. dst=/work" for the Checkout step) --
+    therefore copy that `.git` FILE as-is, but the absolute path it
+    points at lives outside `/work` and is never mounted, so every `git`
+    command inside the job container fails ("unable to get git
+    revision: repository does not exist") and `ci_lint`'s
+    `repo_files.list_repo_files` falls back to a raw filesystem walk
+    that does NOT respect `.gitignore` -- scanning `.ci-lint/` itself and
+    producing spurious GEN-005/LAYOUT-001/PKG-004/WF-002 findings
+    (zackees/ci.yml#47).
+
+    Returns the main checkout's absolute root directory (the parent of
+    its real `.git` dir) when it lies outside `repo_root`, so the caller
+    can bind-mount that same absolute path, by identity, into every job
+    container -- resolving the worktree's absolute gitdir reference
+    exactly as it would on the host. Returns None for an ordinary (non-
+    worktree) checkout, where no extra mount is needed and behavior is
+    unchanged.
+    """
+
+    dot_git = repo_root / ".git"
+    if not dot_git.is_file():
+        return None  # ordinary checkout: .git is already a real directory
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    common_dir = Path(proc.stdout.strip())
+    if not common_dir.is_dir():
+        return None
+    main_root = common_dir.parent
+    try:
+        main_root.relative_to(repo_root)
+        return None  # common dir already lives inside repo_root: nothing extra to mount
+    except ValueError:
+        return str(main_root)
+
+
 @dataclass(frozen=True)
 class LaneResult:
     id: str
@@ -108,11 +161,20 @@ def run_act(repo_root: Path, *, lanes_arg: str | None, title: str) -> int:
         return 1
 
     run_id = f"tmpl-act-{int(time.time())}-{uuid.uuid4().hex[:8]}"
+    extra_git_mount = _detect_external_git_common_dir(repo_root)
+    if extra_git_mount:
+        print(
+            f"[ci/local.py] act: linked git worktree detected -- bind-mounting "
+            f"{extra_git_mount} into every job container so git/ci_lint's tracked-file "
+            f"scan works (zackees/ci.yml#47)",
+            file=sys.stderr,
+        )
     request = {
         "lanes": runnable,
         "event_path": str(event_path.relative_to(repo_root)),
         "run_id": run_id,
         "runner_tag": RUNNER_IMAGE_TAG,
+        "extra_git_mount": extra_git_mount,
     }
     (act_dir / "request.json").write_text(
         json.dumps(request, indent=2), encoding="utf-8"
