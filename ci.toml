@@ -27,6 +27,25 @@ windows-x64   = { target = "x86_64-pc-windows-msvc",    runs-on = "windows-2025"
 windows-arm64 = { target = "aarch64-pc-windows-msvc",   runs-on = "windows-11-arm",   group = "windows" }
 macos-arm64   = { target = "aarch64-apple-darwin",      runs-on = "macos-15",         group = "macos" }
 macos-x64     = { target = "x86_64-apple-darwin",       runs-on = "macos-15-intel",   group = "macos" }
+# musllinux (ci.yml#43): release-only -- built + verified only on the
+# release graph, NEVER through the generic platform-build/platform-run
+# lane matrix (`[flow.release].platforms` below lists the 6 platforms
+# above explicitly, NOT "all", precisely so these two stay out of
+# `plan.platform_lanes`). Reason: a musl wheel cannot be pip-installed
+# into a glibc CPython (musllinux tags are not compatible on a manylinux
+# host) and a statically-linked musl PyO3 extension cannot be dlopen'd by
+# a glibc-linked CPython either -- install smoke needs a REAL musl libc
+# Python, i.e. an Alpine container (`release-musl-smoke` in ci.yml, a
+# bespoke job pair mirroring `release-linux-x64`'s existing precedent of
+# handling one platform outside the generic matrix rather than teaching
+# `ci_lint`'s planner a new "release-only" platform flag -- issue #6
+# round M2-18 decision). `ci_lint release verify` (PKG-006) still
+# requires exactly one wheel per EVERY declared [platforms] entry
+# unconditionally (it iterates `ci.platforms`, not the resolved flow's
+# selection), so these two are still gated the same as every other
+# platform on the release graph.
+linux-x64-musl   = { target = "x86_64-unknown-linux-musl",  runs-on = "ubuntu-24.04",     group = "linux", wheel = "musllinux_1_2" }
+linux-arm64-musl = { target = "aarch64-unknown-linux-musl", runs-on = "ubuntu-24.04-arm", group = "linux", wheel = "musllinux_1_2" }
 
 # ── Python packaging (§13) ───────────────────────────────────────────────────
 [python]
@@ -94,7 +113,12 @@ cache      = "write"
 pre-prune  = true
 
 [flow.release]
-platforms = "all"
+# Explicit list, NOT "all" -- deliberately excludes linux-x64-musl/
+# linux-arm64-musl (see their [platforms] comment above): they are built
+# and verified by their own bespoke `release-musl-build`/`release-musl-
+# smoke` job pair in ci.yml, never by the generic platform-build/
+# platform-run lane matrix `plan.platform_lanes` drives.
+platforms = ["linux-x64", "linux-arm64", "windows-x64", "windows-arm64", "macos-arm64", "macos-x64"]
 suites    = "all"
 wheels    = "all"
 publish   = "pypi"

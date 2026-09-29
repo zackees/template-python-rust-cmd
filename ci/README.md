@@ -29,6 +29,7 @@ ci/
 ├── plan_profile.py         # ci-pre.yml: derives is-release/profile from plan.flow
 ├── release_guard.py        # .github/workflows/ci.yml `release-guard` job's logic
 ├── release.py               # .github/workflows/ci.yml `release-linux-x64`/`release-verify` jobs' logic
+├── musl_smoke.py            # .github/workflows/ci.yml `release-musl-smoke` job's logic (musllinux, Alpine container)
 ├── perf.py                  # .github/workflows/ci.yml `perf` job's logic
 ├── perf_pyo3_bench.py       # inner PyO3-call timing loop `perf.py bench` runs via the built venv
 ├── ci_ok.py                # .github/workflows/ci.yml `ci-ok` job's logic
@@ -109,6 +110,16 @@ step (CLAUDE.md rule 6):
   maturin's sdist-trimmed workspace `Cargo.toml` drops `template-cli`, a
   `bundle-bins` sibling with no Cargo dependency edge to the extension
   crate).
+- **`musl_smoke.py`** (ci.yml#43, musllinux) — `release-musl-smoke`'s one
+  line: installs the `release-musl-build`-staged musllinux wheel with
+  stdlib `venv`/`pip` (no `soldr`/`uv` -- neither exists in the
+  `python:3.13-alpine` container this job runs in) and runs the bundled
+  CLI's `--version`, writing the same `smoke-results/<id>.json` shape
+  every other platform's smoke step writes. This is the only environment
+  that can actually load a musllinux wheel's native extension: a
+  glibc-linked CPython cannot dlopen a musl-linked PyO3 extension, and
+  pip on a glibc/manylinux host does not consider a musllinux-tagged
+  wheel installable at all.
 - **`perf.py`** / **`perf_pyo3_bench.py`** (round 5) — `perf.py bench`
   builds a release-profile wheel, installs it into a clean venv, then
   times `template-cli --version` startup and (via `perf_pyo3_bench.py`,
