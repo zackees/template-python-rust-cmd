@@ -92,7 +92,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 31369f521ed524370396cad3a5717abd6762d4dc
+          ref: db0be5c8cea71c12b31493a994e874e87f76390c
           path: .ci-lint
           persist-credentials: false
 
@@ -151,7 +151,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 31369f521ed524370396cad3a5717abd6762d4dc
+          ref: db0be5c8cea71c12b31493a994e874e87f76390c
           path: .ci-lint
           persist-credentials: false
 
@@ -319,7 +319,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 31369f521ed524370396cad3a5717abd6762d4dc
+          ref: db0be5c8cea71c12b31493a994e874e87f76390c
           path: .ci-lint
           persist-credentials: false
 
@@ -415,7 +415,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 31369f521ed524370396cad3a5717abd6762d4dc
+          ref: db0be5c8cea71c12b31493a994e874e87f76390c
           path: .ci-lint
           persist-credentials: false
 
@@ -485,7 +485,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 31369f521ed524370396cad3a5717abd6762d4dc
+          ref: db0be5c8cea71c12b31493a994e874e87f76390c
           path: .ci-lint
           persist-credentials: false
 
