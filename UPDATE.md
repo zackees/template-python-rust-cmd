@@ -15,7 +15,7 @@ guidance, walk this checklist so nothing rots out of sync.
      exists** — `zackees/ci.yml#6` round 1 deleted it; there is no
      workflow on this branch right now (see `docs/ARCHITECTURE.md`).
      Until a later round adds it back, the gate only needs to be
-     reachable from `./ci.sh <name>`.
+     reachable from `./ci.py <name>`.
    - Add a row to `tests/test_gates.py` covering the happy path.
    - If the gate needs a host check, import
      `template_python_rust_cmd.platforms` — never `sys.platform`/`os.name`
@@ -40,7 +40,7 @@ guidance, walk this checklist so nothing rots out of sync.
    behavior changed.
 8. If the composite action's surface changed, update `action.yml` (and
    `action/cleanup/action.yml` if the cleanup contract changed), and
-   re-run `./ci.sh action_yaml action_surface` locally to confirm the
+   re-run `./ci.py action_yaml action_surface` locally to confirm the
    gates still pass.
 
 ## Agent guidance

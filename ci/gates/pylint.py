@@ -16,7 +16,7 @@ bare `uv run` would demand from the root `pyproject.toml`.
 Requires the built `_native` extension to be importable (needed for
 `extension-pkg-allow-list` to actually introspect it rather than merely
 declare it, and to avoid `tests/` import-time failures) -- run this gate
-after the `build` gate, same ordering `ci.sh`'s `GATE_ORDER` already
+after the `build` gate, same ordering `ci.py`'s `GATE_ORDER` already
 uses for `ruff`.
 """
 
@@ -70,7 +70,7 @@ def run() -> int:
     # Same reasoning as ci/fast.py's `_run_isolated_soldr`: this nested
     # `uv run --no-project` must resolve its OWN nested ephemeral
     # environment, not inherit an outer `uv run --no-project --script
-    # ci.py`'s `VIRTUAL_ENV` (set when this gate runs via `./ci.sh
+    # ci.py`'s `VIRTUAL_ENV` (set when this gate runs via `./ci.py
     # pylint`) -- observed empirically (round-4B worker report) as
     # nondeterministic `E0401: Unable to import 'pytest'` findings that
     # vanished when invoked directly (no outer uv env active). Stripping

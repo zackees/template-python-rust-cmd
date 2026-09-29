@@ -1,7 +1,7 @@
 # `ci/gates/`
 
 Workspace-state checks that run on every CI cycle and on developer
-laptops via `./ci.sh <gate>`. One Python file per gate; each file
+laptops via `./ci.py <gate>`. One Python file per gate; each file
 exposes a single `def run() -> int` returning the conventional Unix
 exit code (0 = pass, non-zero = fail).
 
@@ -16,8 +16,8 @@ contract:
 - **Testable** — `tests/test_gates.py` can `import ci.gates.fmt;
   ci.gates.fmt.run()` against a worktree fixture and assert the exit
   code.
-- **Locally reproducible** — `./ci.sh fmt` on a dev laptop runs the
-  *exact* same bytes as the GHA step that calls `./ci.sh fmt`.
+- **Locally reproducible** — `./ci.py fmt` on a dev laptop runs the
+  *exact* same bytes as the GHA step that calls `./ci.py fmt`.
 - **Replaceable in isolation** — downstream consumers (forks of this
   template) can swap one gate without forking the whole workflow file.
 
@@ -64,6 +64,6 @@ run, write a hook.
 1. Create `ci/gates/<name>.py` exposing `def run() -> int`.
 2. Insert `<name>` into `ci.py::GATE_ORDER` at the right position.
 3. Add a row to `tests/test_gates.py` covering the happy path.
-4. The workflow picks it up automatically because `./ci.sh all` walks
+4. The workflow picks it up automatically because `./ci.py all` walks
    `GATE_ORDER`; no `.github/workflows/ci.yml` edit needed unless the
    gate has a different platform affinity.

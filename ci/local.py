@@ -11,7 +11,7 @@ zackees/ci.yml#6 section 11 ("bosn -> act: local CI is first class").
 All logic lives in `ci/localrun/` (stdlib only, except where it shells
 out to `uv run --no-project --with pyyaml` for `ci_lint` itself, which
 needs PyYAML) -- this file is only argument parsing and dispatch, same
-convention as `ci.sh`/`ci/gates/`.
+convention as `ci.py`/`ci/gates/`.
 """
 
 from __future__ import annotations

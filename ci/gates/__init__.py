@@ -5,7 +5,7 @@ the conventional Unix exit code (0 = pass, non-zero = fail). The canonical
 ordering is owned by `ci.py::GATE_ORDER`, NOT by alphabetical name.
 
 Hooks vs gates — repo-state vs agent-intent:
-  - Gates here run on every push (GHA `./ci.sh all`) and on developer
+  - Gates here run on every push (GHA `./ci.py all`) and on developer
     laptops. They check repo state.
   - Hooks under `ci/hooks/` only fire during a Claude/Codex session
     (PreToolUse / PostToolUse / SessionStart). They check agent intent

@@ -32,7 +32,7 @@ from pathlib import Path
 # `yaml` is guarded so the contract test in `tests/test_gates.py` can
 # import this module without pyyaml installed in the pytest venv. The
 # PEP 723 inline-deps path on `ci.py` always provides pyyaml when this
-# gate actually runs via `./ci.sh action_surface`.
+# gate actually runs via `./ci.py action_surface`.
 try:
     import yaml  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover
@@ -117,7 +117,7 @@ def _subcommands_from_action(path: Path) -> list[str]:
 def run() -> int:
     if yaml is None:
         print(
-            "action_surface: PyYAML not available. Run via `./ci.sh action_surface` so the PEP 723 inline-deps path provides it.",
+            "action_surface: PyYAML not available. Run via `./ci.py action_surface` so the PEP 723 inline-deps path provides it.",
             file=sys.stderr,
         )
         return 1

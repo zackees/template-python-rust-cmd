@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 # `yaml` (PyYAML) is the only third-party dep this gate needs. It's
-# declared as a PEP 723 inline dep on `ci.py`, so `./ci.sh action_yaml`
+# declared as a PEP 723 inline dep on `ci.py`, so `./ci.py action_yaml`
 # always has it. The try/except keeps the module importable in the
 # pytest venv (which doesn't install pyyaml) so the contract test in
 # `tests/test_gates.py` can introspect `run()`'s signature; `run()`
@@ -109,7 +109,7 @@ def _check_one(path: Path) -> list[str]:
 def run() -> int:
     if yaml is None:
         print(
-            "action_yaml: PyYAML not available. Run via `./ci.sh action_yaml` so the PEP 723 inline-deps path provides it.",
+            "action_yaml: PyYAML not available. Run via `./ci.py action_yaml` so the PEP 723 inline-deps path provides it.",
             file=sys.stderr,
         )
         return 1

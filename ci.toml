@@ -239,12 +239,10 @@ platform-code     = ["crates/private/template-platform/src/platforms/**", "src/t
 pypi = { auth = "oidc", environment = "pypi", mode = "mock" }
 
 # ── Exceptions: declared, reported on EVERY run, fail once expired ──────────
-[[exceptions]]
-rule    = "GEN-005"
-path    = "ci.sh"
-reason  = "Gate launcher kept for now (owner-approved); replace with a Python entry point."
-issue   = "https://github.com/zackees/template-python-rust-cmd/issues/15"
-expires = "2026-12-31"
+# The `ci.sh` GEN-005 exception (Gate launcher kept as a bash wrapper,
+# tracked by zackees/template-python-rust-cmd#15) is RESOLVED: `ci.sh` is
+# removed and `./ci.py` is directly executable via its own PEP 723
+# shebang. No `[[exceptions]]` remain; precheck must show 0 exceptions.
 
 # The two SEC-002 exceptions round-3B needed for `actions: read` (on
 # ci-precheck.yml's precheck job and ci.yml's precheck-caller/ci-ok jobs)

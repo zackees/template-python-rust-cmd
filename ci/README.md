@@ -8,7 +8,7 @@ zackees/ci.yml#6 round 1 — see below.
 
 ```
 ci/
-├── gates/                 # workspace-state checks (run by ./ci.sh)
+├── gates/                 # workspace-state checks (run by ./ci.py)
 │   ├── __init__.py
 │   ├── loc.py             # LOC budget gate (warn 1000 / fail 1500)
 │   ├── fmt.py             # soldr cargo fmt --check
@@ -42,7 +42,7 @@ ci/
 ## CI-workflow orchestration (`fast.py` / `dylint.py` / `ci_ok.py`)
 
 Added in zackees/ci.yml#6 round 2 alongside `.github/workflows/ci.yml` +
-`ci-precheck.yml`. These are NOT gates (they don't run under `./ci.sh`) —
+`ci-precheck.yml`. These are NOT gates (they don't run under `./ci.py`) —
 they are the Python side of the workflow's `run:` steps, one line per
 step (CLAUDE.md rule 6):
 
@@ -161,7 +161,7 @@ wheel`, or the soldr PEP 517 backend via `uv build`/`uv sync`).
 - Every hook file is invoked as `uv run --no-project --script
   ci/hooks/<name>.py`.
 - No multi-line shell in `.github/workflows/ci.yml` — if you can't fit
-  a CI step on one line as `./ci.sh <gate>`, the logic belongs as a
+  a CI step on one line as `./ci.py <gate>`, the logic belongs as a
   gate.
 - Host checks (`sys.platform`, `os.name`) are banned in `ci/*.py`; if a
   gate needs one, it imports `template_python_rust_cmd.platforms`
@@ -172,9 +172,9 @@ wheel`, or the soldr PEP 517 backend via `uv build`/`uv sync`).
 
 ## Where the dispatcher lives
 
-`ci.py` at the repo root is the PEP 723 dispatcher; `ci.sh` is the
-thin bash wrapper that calls it with `--no-project --script` (kept as
-an owner-approved exception — see `ci.toml`'s `[[exceptions]]` and
-https://github.com/zackees/template-python-rust-cmd/issues/15). Don't
+`ci.py` at the repo root is the PEP 723 dispatcher, directly
+executable via its `#!/usr/bin/env -S uv run --no-project --script`
+shebang (zackees/template-python-rust-cmd#15 replaced the former
+`ci.sh` bash wrapper with this — no shell script remains). Don't
 duplicate that flag combination in CI snippets — always route through
-`./ci.sh <gate>`.
+`./ci.py <gate>`.

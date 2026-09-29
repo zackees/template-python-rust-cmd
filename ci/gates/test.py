@@ -19,7 +19,7 @@ gate's previous shape). `ci/gates/*.py` must never invoke bare `cargo` or
 `maturin` — see zackees/ci.yml#6 round 1 (`RUST-001`/`PKG-003`). Reserve
 this opt-in to a full project sync for named entry points — see
 [zccache#835 rule 5](https://github.com/zackees/zccache/issues/835).
-Other gates use `./ci.sh`'s `--no-project --script` discipline so they
+Other gates use `./ci.py`'s `--no-project --script` discipline so they
 don't pay that cost.
 """
 

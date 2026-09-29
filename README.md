@@ -64,8 +64,7 @@ workflow files) may do and decides what each run selects.
 ├── rust-toolchain.toml         # pinned Rust toolchain
 ├── action.yml                  # composite GitHub Action (root entry)
 ├── action/cleanup/action.yml   # paired post-job cleanup action
-├── ci.sh                       # canonical CI dispatcher (bash wrapper)
-├── ci.py                       # PEP 723 dispatcher (called by ci.sh)
+├── ci.py                       # canonical CI dispatcher (PEP 723, executable)
 ├── ci/
 │   ├── gates/                  # repo-state checks (run on every push)
 │   └── hooks/                  # agent-intent guards (Claude Code only)
@@ -97,13 +96,13 @@ workflow files) may do and decides what each run selects.
 
 ```bash
 ./install        # verify uv, soldr, and the pinned toolchain
-./ci.sh fmt       # one gate
-./ci.sh all       # every gate, continue past failures
+./ci.py fmt       # one gate
+./ci.py all       # every gate, continue past failures
 ./test            # soldr cargo test + uv sync (soldr backend) + pytest
 ```
 
 The dispatcher's flag discipline (`uv run --no-project --script`) is
-load-bearing — see [`ci.sh`](./ci.sh) for the rationale. Bare `uv run`
+load-bearing — see [`ci.py`](./ci.py) for the rationale. Bare `uv run`
 on a soldr-backed project walks up to `pyproject.toml` and triggers a
 full wheel build *before* your script starts, blowing up a 200 ms gate
 into a multi-minute cold compile. The wrapper exists to keep that flag
@@ -114,7 +113,7 @@ everyone).
 
 ## CI Surface
 
-`./ci.sh all` runs every gate registered in `ci.py::GATE_ORDER`:
+`./ci.py all` runs every gate registered in `ci.py::GATE_ORDER`:
 
 | Gate              | What it does                                                              |
 |-------------------|-----------------------------------------------------------------------------|

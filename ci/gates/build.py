@@ -5,7 +5,7 @@ The cheapest gate that proves the Rust workspace still compiles. We use
 does a real build, so paying for two builds is wasted work. `--locked`
 refuses to update `Cargo.lock`.
 
-**Fatal in `./ci.sh all`.** If this gate fails, every later gate
+**Fatal in `./ci.py all`.** If this gate fails, every later gate
 (`test`, `action_surface`, anything that touches the compiled binaries)
 will produce noise instead of signal. `ci.py` sees `build` in
 `FATAL_GATES` and halts the run, reporting only the build failure in

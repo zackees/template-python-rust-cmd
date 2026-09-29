@@ -66,6 +66,6 @@ catalogued cross toolchains replace it.
 ## Linting
 
 Both `soldr cargo clippy --workspace --all-targets --locked -D
-warnings` and `soldr cargo fmt --all -- --check` run via `./ci.sh
-clippy` and `./ci.sh fmt`. Failing either fails the gate; no
+warnings` and `soldr cargo fmt --all -- --check` run via `./ci.py
+clippy` and `./ci.py fmt`. Failing either fails the gate; no
 `#[allow(...)]` without a justification comment.
