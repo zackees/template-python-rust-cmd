@@ -21,6 +21,19 @@ homepage = "https://github.com/example/template-python-rust-cmd"
 anyhow = "1"
 pyo3 = { version = "0.29.2", features = ["extension-module", "abi3-py310"] }
 
+# Ban the blind-panic footguns before the first one is written -- see
+# zackees/template-python-rust-cmd#13 (ci.yml#6 round M2-4). Every member
+# crate opts in via `[lints] workspace = true`. `expect_used` stays "warn"
+# (not "deny") because a documented `expect("...")` on a known invariant
+# is the correct idiom; note the clippy gate runs with `-D warnings`
+# (ci/gates/clippy.py), so in practice an un-annotated `expect_used` still
+# fails CI -- see clippy.toml for the test/const carve-outs.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+unwrap_in_result = "deny"
+panic_in_result_fn = "deny"
+expect_used = "warn"
+
 # Keep third-party crates release-grade even in the dev profile.
 # `cargo build` (no --release) compiles first-party crates unoptimized
 # for fast iteration; third-party deps (pyo3, serde, etc.) are compiled

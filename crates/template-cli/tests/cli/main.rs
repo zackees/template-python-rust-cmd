@@ -28,6 +28,14 @@
 
 use std::process::Command;
 
+// `allow-expect-in-tests` (clippy.toml) only covers `#[test]`-annotated
+// functions / `#[cfg(test)]` modules; this helper is called BY tests but
+// isn't itself one, so `expect_used` (Cargo.toml workspace lint,
+// ci.yml#6 round M2-4 / template-python-rust-cmd#13) still fires under
+// the clippy gate's `-D warnings`. Both `.expect()`s below document a
+// genuine test-only invariant (see the module doc comment above), so a
+// scoped allow is correct here rather than restructuring to `?`.
+#[allow(clippy::expect_used)]
 fn run(args: &[&str]) -> std::process::Output {
     let bin = std::env::var("CARGO_BIN_EXE_template-cli")
         .expect("CARGO_BIN_EXE_template-cli not set -- run via `cargo test`, not `cargo check`");
