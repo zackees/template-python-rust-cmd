@@ -69,51 +69,48 @@ def _make_executable(path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# build: sdist + release-profile linux-x64 wheel, the wheel built FROM
-# the sdist.
+# build: sdist (Soldr PEP 517 backend via `uv build --sdist`) + the
+# release-profile wheel via `soldr wheel --release [--target <triple>]`
+# (zackees/ci.yml#17/#19, template-python-rust-cmd#37/#39).
 #
-# One `uv build` (no `--sdist`/`--wheel` flag): uv writes the sdist, then
-# builds the wheel from that extracted sdist -- PKG-004's "build the wheel
-# FROM the sdist through the PEP 517 frontend", literally. Rounds 5..M2-35
-# needed two separate `uv build --sdist` / `uv build --wheel` calls because
-# maturin's sdist writer trimmed `crates/template-cli` (a `bundle-bins`
-# sibling with no Cargo edge to `template-py`) out of the sdist's workspace
-# `members` (zackees/soldr#3444). soldr 0.9.26 (#3451) patches the sdist's
-# workspace back, so pyproject.toml's floor is `soldr>=0.9.26` and the
-# workaround is gone (zackees/template-python-rust-cmd#37).
+# `soldr wheel --release` builds every `*-linux-gnu` wheel against soldr's
+# catalogue glibc-2.17 toolchain, host target included (zackees/soldr#3432),
+# and since soldr 0.9.27 bundles `[tool.soldr.pep517] bundle-bins` into it
+# (zackees/soldr#3468). `sdist-smoke` below keeps PKG-004's "a wheel builds
+# FROM the sdist through the PEP 517 frontend" proof for the shipped sdist.
 # ---------------------------------------------------------------------------
 
 
+def _write_outputs(**values: Path) -> None:
+    gh_out = os.environ.get("GITHUB_OUTPUT")
+    if gh_out:
+        with open(gh_out, "a", encoding="utf-8") as fh:
+            for key, value in values.items():
+                fh.write(f"{key.replace('_', '-')}={value}\n")
+
+
 def cmd_build(args: argparse.Namespace) -> int:
-    """`--target <triple>` -- `.github/workflows/ci.yml`'s
-    `release-linux-x64` job ALWAYS passes `x86_64-unknown-linux-gnu`
-    (same triple as the `ubuntu-24.04` host) to route the wheel build
-    through Soldr's controlled manylinux_2_17 cross sysroot instead of
-    the runner's own newer glibc -- the SAME mechanism `linux-arm64`'s
-    `platform-build` leg already uses successfully. A plain HOST build
-    (no `--target`, i.e. no cross sysroot mounted) tags itself with the
-    runner's real glibc instead (`manylinux_2_34_x86_64`, confirmed
-    live: run 36510818002, job 109222847723) -- which is NOT the fix:
-    the fleet's declared glibc-2.17 floor (docs/policy-rust.md) is a
-    policy this build must MEET, not a declaration to relax to match
-    whatever an unconstrained build happens to produce. `glibc-check`
-    (below) verifies the staged wheel's actual max required GLIBC
-    symbol version from the artifact's own bytes -- the proof that the
-    cross sysroot, not just the wheel filename tag, is doing its job."""
+    """`--target <triple>` is optional: `release-linux-x64` builds the
+    host target (`soldr wheel --release` already enforces glibc 2.17 on
+    it); the musl lanes pass their cross target. `glibc-check` (below)
+    still proves the floor from the staged wheel's own bytes."""
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    config_settings = ["--config-setting", "profile=release"]
+    rc = _run_isolated_soldr(["uv", "build", "--sdist", "--out-dir", str(out_dir)])
+    if rc != 0:
+        return rc
+    cmd = ["soldr", "wheel", "--release"]
     if args.target:
-        config_settings += ["--config-setting", f"target={args.target}"]
-    rc = _run_isolated_soldr(
-        ["uv", "build", *config_settings, "--out-dir", str(out_dir)]
-    )
+        cmd += ["--target", args.target]
+    rc = _run([*cmd, "--out", str(out_dir)])
     if rc != 0:
         return rc
     wheels = sorted(out_dir.glob("*.whl"))
     sdists = sorted(out_dir.glob("*.tar.gz"))
     if not wheels:
-        print(f"ci/release.py: uv build produced no .whl in {out_dir}", file=sys.stderr)
+        print(
+            f"ci/release.py: soldr wheel produced no .whl in {out_dir}", file=sys.stderr
+        )
         return 1
     if not sdists:
         print(
@@ -123,11 +120,37 @@ def cmd_build(args: argparse.Namespace) -> int:
         return 1
     print(f"wheel: {wheels[-1]}")
     print(f"sdist: {sdists[-1]}")
-    gh_out = os.environ.get("GITHUB_OUTPUT")
-    if gh_out:
-        with open(gh_out, "a", encoding="utf-8") as fh:
-            fh.write(f"wheel-path={wheels[-1]}\n")
-            fh.write(f"sdist-path={sdists[-1]}\n")
+    _write_outputs(wheel_path=wheels[-1], sdist_path=sdists[-1])
+    return 0
+
+
+def cmd_sdist_smoke(args: argparse.Namespace) -> int:
+    """Build a wheel FROM the shipped sdist through the Soldr PEP 517
+    backend (`uv build --wheel <sdist>`) and require the bundled CLI in
+    it -- the sdist is what a platform without a published wheel builds."""
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rc = _run_isolated_soldr(
+        ["uv", "build", "--wheel", args.sdist, "--out-dir", str(out_dir)]
+    )
+    if rc != 0:
+        return rc
+    wheels = sorted(out_dir.glob("*.whl"))
+    if not wheels:
+        print(f"ci/release.py: sdist produced no .whl in {out_dir}", file=sys.stderr)
+        return 1
+    with zipfile.ZipFile(wheels[-1]) as archive:
+        scripts = [
+            n for n in archive.namelist() if f".data/scripts/{args.cli_name}" in n
+        ]
+    if not scripts:
+        print(
+            f"ci/release.py: {wheels[-1].name} (built from the sdist) has no "
+            f".data/scripts/{args.cli_name}",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"sdist-smoke: {wheels[-1].name} contains {scripts[0]}")
     return 0
 
 
@@ -441,6 +464,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--target", default=None)
     p.add_argument("--out", required=True)
     p.set_defaults(func=cmd_build)
+
+    p = sub.add_parser("sdist-smoke")
+    p.add_argument("--sdist", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--cli-name", default="template-cli")
+    p.set_defaults(func=cmd_sdist_smoke)
 
     p = sub.add_parser("smoke")
     p.add_argument("--wheel-dir", required=True)

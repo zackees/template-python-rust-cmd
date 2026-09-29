@@ -303,7 +303,7 @@ jobs:
         if: contains(fromJSON(needs.precheck.outputs.fast_suites_json), 'integration')
         run: python3 ci/fast.py integration-test
 
-      - name: Build wheel (Soldr PEP 517 backend via uv build)
+      - name: Build wheel (soldr wheel, bundles template-cli)
         id: wheel-build
         run: python3 ci/fast.py wheel-build --out dist/fast-lane
 
@@ -471,7 +471,7 @@ jobs:
           PYTHONPATH: .ci-lint
         run: python3 -m ci_lint tests size --repo . --artifacts ${{ runner.temp }}/cargo-messages.jsonl
 
-      - name: Build wheel (Soldr PEP 517 backend, cross target via config setting)
+      - name: Build wheel (soldr wheel --target, cross target)
         id: wheel-build
         run: python3 ci/platform_build.py wheel-build --target ${{ matrix.lane.target }} --profile ${{ needs.precheck.outputs.profile }} --out dist/platform-${{ matrix.lane.id }}
 
@@ -699,9 +699,14 @@ jobs:
           save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
           cache-suffix: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.cache_key_pr || '' }}
 
-      - name: Build sdist + release-profile wheel (Soldr PEP 517 backend, manylinux_2_17 cross sysroot)
+      - name: Build sdist (Soldr PEP 517 backend) + release wheel (soldr wheel --release, manylinux_2_17)
         id: release-build
         run: python3 ci/release.py build --target x86_64-unknown-linux-gnu --out dist/release-linux-x64
+
+      - name: sdist smoke (wheel built FROM the sdist through the Soldr PEP 517 backend, PKG-004)
+        env:
+          SDIST_PATH: ${{ steps.release-build.outputs.sdist-path }}
+        run: python3 ci/release.py sdist-smoke --sdist "$SDIST_PATH" --out ${{ runner.temp }}/sdist-smoke
 
       - name: GLIBC floor check (measures the staged wheel's actual max required GLIBC symbol version)
         env:
@@ -802,7 +807,7 @@ jobs:
         with:
           save-cache: "false"
 
-      - name: Build sdist + release-profile musl wheel (Soldr PEP 517 backend, cross target)
+      - name: Build sdist (Soldr PEP 517 backend) + release musl wheel (soldr wheel --release --target)
         id: musl-build
         run: python3 ci/release.py build --target ${{ matrix.lane.target }} --out dist/release-${{ matrix.lane.id }}
 

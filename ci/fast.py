@@ -18,20 +18,15 @@ Decisions this round made (see the PR body / worker report for evidence):
     pass (`build-json`) so the file `ci_lint units`/`ci_lint tests size`
     read is pure JSON — cargo interleaves human test output with the
     compiler-message stream once tests actually execute.
-  - The wheel build uses `uv build --wheel` (the plain PEP 517 frontend),
-    not `soldr wheel`. Both were measured locally on this workspace, warm
-    (2026-09-28): `uv build --wheel` 19.95s real (16.1s wheel build +
-    template-cli bundling, dev profile, 23 HIT / 8 MISS then 6 HIT / 0
-    MISS); `soldr wheel --release` 14.32s real (release profile). `soldr
-    wheel` is ~28% faster here, but it does NOT go through the PEP 517
-    protocol at all -- it bypasses `pyproject.toml`'s `build-backend`
-    declaration entirely (it even prints "build-backend in pyproject.toml
-    is not set to maturin", i.e. it expects a maturin-native project, not
-    a PEP-517-fronted one) and drives its own internal maturin call
-    directly. `PKG-004`'s requirement is specifically "build the wheel
-    FROM the sdist through the PEP 517 frontend", which only `uv build`
-    satisfies -- `soldr wheel` cannot be substituted regardless of its
-    speed edge.
+  - The wheel build uses `soldr wheel` (zackees/ci.yml#17,
+    template-python-rust-cmd#37): the fleet's blessed wheel surface. Since
+    soldr 0.9.27 (zackees/soldr#3468) it honours `[tool.soldr.pep517]
+    bundle-bins` through the PEP 517 backend's own `_bundle_bins.py`, so
+    the wheel still carries `<dist>.data/scripts/template-cli` (PKG-003).
+    It runs the job's own soldr (no nested PEP 517 soldr), so it needs no
+    `_run_isolated_soldr` env stripping. The PEP 517 backend itself is
+    still exercised by `python-sync` (`uv sync`, editable install) and by
+    `ci/release.py sdist-smoke` (wheel built FROM the sdist).
 
 Never invokes bare `cargo`/`rustc`/`maturin`/`pip` (RUST-001/PKG-003) — see
 `ci/gates/*.py` for the existing fmt/clippy/build/test gates this module
@@ -149,12 +144,12 @@ def cmd_integration_test(_args: argparse.Namespace) -> int:
 def cmd_wheel_build(args: argparse.Namespace) -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    rc = _run_isolated_soldr(["uv", "build", "--wheel", "--out-dir", str(out_dir)])
+    rc = _run(["soldr", "wheel", "--out", str(out_dir)])
     if rc != 0:
         return rc
     wheels = sorted(out_dir.glob("*.whl"))
     if not wheels:
-        print(f"ci/fast.py: uv build produced no .whl in {out_dir}", file=sys.stderr)
+        print(f"ci/fast.py: soldr wheel produced no .whl in {out_dir}", file=sys.stderr)
         return 1
     wheel_path = wheels[-1]
     print(f"wheel: {wheel_path}")
