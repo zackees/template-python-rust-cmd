@@ -1,5 +1,16 @@
 """Dylint lane orchestration: one Linux job checks every declared target.
 
+ci.yml#9 (setup-soldr v0.9.83+): the Setup-soldr step now takes
+`dylint-targets` (this script's cross-target list, wired through
+`.github/actions/soldr/action.yml`) and itself runs
+`soldr dylint prepare --target T` for every declared target, keyed into
+the Dylint foundation/output cache identity. This script therefore no
+longer prepares cross targets itself -- only the host materialization
+that `dylint: "true"` mode already performs unconditionally. Deleting the
+per-target prepare loop here (and the wasted rust-std download it used to
+race the check pass against) is the whole point of ci.yml#9: no
+per-repository cache plumbing.
+
 zackees/ci.yml#6 §2/§3/§5, and its third comment ("Use case to test:
 cross-target Dylint must be cached and fast", D1-D8). This script is the
 single `run:` line the `dylint` job in `.github/workflows/ci.yml` calls; it
@@ -27,7 +38,6 @@ import argparse
 import json
 import os
 import subprocess
-import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -121,18 +131,6 @@ def _run(cmd: list[str]) -> tuple[int, float]:
     return proc.returncode, time.monotonic() - start
 
 
-def _prepare_targets(cross: list[DylintTarget]) -> int:
-    """`soldr dylint prepare --target T` for every cross target: fetches
-    the prebuilt nightly rust-std for T. Never builds std or a toolchain
-    from source (RUST-009)."""
-    for target in cross:
-        rc, seconds = _run(["soldr", "dylint", "prepare", "--target", target.triple])
-        print(f"prepare --target {target.triple}: {seconds:.1f}s rc={rc}")
-        if rc != 0:
-            return rc
-    return 0
-
-
 def _check_cmd(target: DylintTarget | None) -> list[str]:
     """`soldr dylint` (soldr's own subcommand, not `soldr cargo dylint`,
     which defers to a stray `cargo-dylint` on PATH instead of soldr's
@@ -197,22 +195,31 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--results-out", default=None, help="write DylintPassResult[] JSON here"
     )
+    parser.add_argument(
+        "--print-cross-targets",
+        action="store_true",
+        help=(
+            "Print 'targets=<comma-separated cross triples>' to stdout "
+            "(GITHUB_OUTPUT format) and exit; used by the workflow step "
+            "that resolves the Setup-soldr `dylint-targets` input before "
+            "the check pass runs, so setup-soldr can prepare rust-std for "
+            "every declared cross target ahead of time (ci.yml#9)."
+        ),
+    )
     args = parser.parse_args(argv)
     repo = Path(args.repo).resolve()
 
     platforms = _load_platforms(repo)
     host = next(t for t in platforms if t.is_host)
     cross = [t for t in platforms if not t.is_host]
+
+    if args.print_cross_targets:
+        print(f"targets={','.join(t.triple for t in cross)}")
+        return 0
+
     print(
         f"dylint lane: host={host.triple} cross={[t.triple for t in cross]} shape={args.shape}"
     )
-
-    rc = _prepare_targets(cross)
-    if rc != 0:
-        print(
-            "ci/dylint.py: soldr dylint prepare failed; see log above", file=sys.stderr
-        )
-        return rc
 
     if args.shape == "multi-target":
         results = _run_multi_target(host, cross)

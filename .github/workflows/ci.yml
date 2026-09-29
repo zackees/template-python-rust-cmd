@@ -353,6 +353,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Resolve Dylint cross targets
+        id: dylint-targets
+        run: python3 ci/dylint.py --print-cross-targets >> "$GITHUB_OUTPUT"
+
       - name: Setup soldr (Dylint mode)
         uses: ./.github/actions/soldr
         with:
@@ -362,6 +366,11 @@ jobs:
           # does (zackees/clud's working _dylint.yml pattern). Must equal
           # dylints/platform_boundary/rust-toolchain.toml's channel exactly.
           dylint-toolchain: "nightly-2026-05-28"
+          # ci.yml#9 (setup-soldr v0.9.83+): setup-soldr itself prepares
+          # rust-std for each cross target and keys the Dylint
+          # foundation/output cache on the full target set, so
+          # ci/dylint.py no longer runs `soldr dylint prepare --target`.
+          dylint-targets: ${{ steps.dylint-targets.outputs.targets }}
           prebuild-deps: "none"
           verify-compile-cache: "warn"
           cache-key-suffix: "dylint"
