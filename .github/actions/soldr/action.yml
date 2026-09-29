@@ -88,15 +88,21 @@ inputs:
     default: ""
   save-cache:
     description: >-
-      Forwarded to setup-soldr's own `save-cache` (round-4B; ci.toml
-      `[allow].setup-soldr.require.save-cache = "plan"`). MUST be set by
-      every caller to `${{ needs.precheck.outputs.cache_save }}` --
-      "true" only on a writer flow (main push, nightly), "false"
-      otherwise -- never left at this input's own default or set to a
-      literal. `CACHE-009` enforces this statically: it accepts a value
-      here only when it is itself `${{ inputs.save-cache }}` (a
-      passthrough of THIS composite's own input, checked one level
-      further at each caller) or contains `needs.precheck.outputs.`.
+      Forwarded to setup-soldr's own save-cache (round-4B; ci.toml
+      [allow].setup-soldr.require.save-cache = "plan"). MUST be set by
+      every caller to an expression built from the precheck job's
+      cache_save output -- "true" only on a writer flow (main push,
+      nightly), "false" otherwise -- never left at this input's own
+      default or set to a literal. CACHE-009 enforces this statically:
+      it accepts a value here only when it is itself an expression
+      passing through THIS composite's own input (checked one level
+      further at each caller), or one built from the precheck plan
+      output directly. (Deliberately no literal GitHub Actions
+      expression-interpolation syntax in this description: the runner
+      evaluates that syntax found ANYWHERE in an action.yml file,
+      including inside a description string -- an earlier draft of
+      this text broke every caller with "Unrecognized named-value:
+      'needs'".)
     required: true
 
 outputs:
