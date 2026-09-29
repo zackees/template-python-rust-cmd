@@ -69,52 +69,18 @@ def _make_executable(path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# build: sdist + release-profile linux-x64 wheel.
+# build: sdist + release-profile linux-x64 wheel, the wheel built FROM
+# the sdist.
 #
-# **Round-5 finding, filed upstream as zackees/soldr#3444: the wheel is
-# NOT built FROM the sdist here**, even though that is PKG-004's ideal
-# and issue #6 ci.yml#4's stated intent ("staged-artifact proof before any
-# publisher... build the wheel FROM the sdist"). A plain `uv build`
-# (sdist, then wheel-from-that-sdist -- the only path that satisfies
-# PKG-004 literally) was tried first and reproducibly fails, independent
-# of profile:
-#
-#   error: package ID specification `template-cli` did not match any packages
-#   ... soldr build --bin template-cli ... --manifest-path
-#   <extracted-sdist>/crates/template-py/Cargo.toml --profile dev
-#   ... soldr._bundle_bins.BundleBinsError: exited with 101
-#
-# Root cause: maturin's sdist builder trims the workspace `Cargo.toml` it
-# writes into the sdist down to the dependency graph reachable from
-# `[tool.maturin] manifest-path` (`crates/template-py/Cargo.toml`).
-# `template-cli` is a build-time SIBLING added only through `[tool.soldr.
-# pep517] bundle-bins` -- it has no Cargo dependency edge to `template-py`
-# -- so maturin drops it from the trimmed `[workspace] members` list even
-# though pyproject.toml's own `[tool.maturin] include` already copies its
-# FILES into the sdist (confirmed: `crates/template-cli/**` is present in
-# the tarball; the regenerated root `Cargo.toml`'s `members` array simply
-# omits `"crates/template-cli"`). `bundle-bins`'s own `soldr build --bin
-# <bin> --manifest-path <the fixed manifest-path>` call then can't resolve
-# `--package template-cli` inside that trimmed workspace. Adding the real
-# root `Cargo.toml` to `include` does not help -- maturin's own generated
-# sdist manifest always wins over a same-path `include` entry (tested
-# locally). No `[tool.maturin]`/`[tool.soldr.pep517]` config in the public
-# docs (`bundle-bins`'s only per-entry keys are `bin`/`package`/`dest`,
-# no per-entry `manifest-path` override) exists to point that bundle-bins
-# call at a different, untrimmed manifest. This is upstream soldr/maturin
-# behavior, not a template misconfiguration -- no round before this one
-# ever exercised the sdist-then-wheel path (`ci/fast.py`/`ci/platform_
-# build.py` both use `uv build --wheel`, direct from the working tree,
-# same as this function does below).
-#
-# **Decision**: build the sdist and the wheel as two SEPARATE `uv build`
-# calls -- `--sdist` only, then `--wheel` only (direct from the working
-# tree, exactly `ci/fast.py`/`ci/platform_build.py`'s existing, proven
-# path, plus `profile=release`). Both artifacts are real and independently
-# valid; this only gives up the STRONGER "wheel built from the sdist,
-# proving the sdist alone is sufficient" claim for this round. `ci_lint
-# release verify`'s own checks (PKG-006, and `wheel check`'s PKG-004 sdist
-# check) still run against both staged artifacts exactly as before.
+# One `uv build` (no `--sdist`/`--wheel` flag): uv writes the sdist, then
+# builds the wheel from that extracted sdist -- PKG-004's "build the wheel
+# FROM the sdist through the PEP 517 frontend", literally. Rounds 5..M2-35
+# needed two separate `uv build --sdist` / `uv build --wheel` calls because
+# maturin's sdist writer trimmed `crates/template-cli` (a `bundle-bins`
+# sibling with no Cargo edge to `template-py`) out of the sdist's workspace
+# `members` (zackees/soldr#3444). soldr 0.9.26 (#3451) patches the sdist's
+# workspace back, so pyproject.toml's floor is `soldr>=0.9.26` and the
+# workaround is gone (zackees/template-python-rust-cmd#37).
 # ---------------------------------------------------------------------------
 
 
@@ -136,21 +102,11 @@ def cmd_build(args: argparse.Namespace) -> int:
     cross sysroot, not just the wheel filename tag, is doing its job."""
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    rc = _run_isolated_soldr(["uv", "build", "--sdist", "--out-dir", str(out_dir)])
-    if rc != 0:
-        return rc
-    wheel_config_settings = ["--config-setting", "profile=release"]
+    config_settings = ["--config-setting", "profile=release"]
     if args.target:
-        wheel_config_settings += ["--config-setting", f"target={args.target}"]
+        config_settings += ["--config-setting", f"target={args.target}"]
     rc = _run_isolated_soldr(
-        [
-            "uv",
-            "build",
-            "--wheel",
-            *wheel_config_settings,
-            "--out-dir",
-            str(out_dir),
-        ]
+        ["uv", "build", *config_settings, "--out-dir", str(out_dir)]
     )
     if rc != 0:
         return rc

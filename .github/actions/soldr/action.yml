@@ -200,7 +200,7 @@ runs:
       with:
         # No `version:` input (zackees/ci.yml#18, RUST-013): float on
         # setup-soldr's own latest-release resolution, matching pyproject.toml's
-        # floor-only `requires = ["soldr>=0.9.25"]` (the PEP 517 backend pin).
+        # floor-only `requires = ["soldr>=0.9.26"]` (the PEP 517 backend pin).
         toolchain-file: "rust-toolchain.toml"
         # ── Mandatory inputs (ci.toml [allow].setup-soldr.require) — fixed,
         # never a pass-through, so a caller cannot silently reenable a
