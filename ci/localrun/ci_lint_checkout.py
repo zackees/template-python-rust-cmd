@@ -14,9 +14,10 @@ from __future__ import annotations
 import re
 import subprocess
 import time
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+import tomllib
 
 CI_LINT_REMOTE = "https://github.com/zackees/ci.yml.git"
 _LINTER_RE = re.compile(r"^([\w.-]+/[\w.-]+)@([0-9a-fA-F]{40})$")
@@ -70,19 +71,37 @@ def _run(cmd: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def ensure_ci_lint(repo_root: Path) -> CheckoutResult:
-    """Ensure `repo_root/.ci-lint` is a checkout of the `ci.toml`-pinned SHA.
+def ensure_ci_lint(
+    repo_root: Path, *, target_dir: Path | None = None
+) -> CheckoutResult:
+    """Ensure `target_dir` (default `repo_root/.ci-lint`) is a checkout of
+    the `ci.toml`-pinned SHA (`ci.toml` is always read from `repo_root`,
+    even when `target_dir` points elsewhere).
 
     Warm path (already at the pinned SHA): one `git rev-parse HEAD`, no
     network. Cold path: `git init` + `git fetch --depth 1 <sha>` +
     `git checkout FETCH_HEAD` -- GitHub.com serves arbitrary reachable
     commit SHAs over the smart HTTP protocol, so this works without a
     branch name.
+
+    `target_dir` exists for `act_inner.py` (round-4B act parity, part 2):
+    `.ci-lint/` is gitignored, and act's default (non `--bind`) copy of
+    the working directory into each job container is git-aware -- it
+    silently DROPS every gitignored path (confirmed empirically: `--bind`
+    itself is not viable here either, since `act` runs INSIDE the bosn
+    act-stack container, and `--bind`'s host-path bind-mount is resolved
+    by the TRUE host's docker daemon, which has no path called `/work` --
+    every file, not just `.ci-lint/`, came back missing under `--bind`).
+    The fix is a machine-scoped bosn volume (`bosn.toml`'s
+    `[stack.act.volumes.ci-lint]`) populated by THIS function at a path
+    outside the git working tree, then bind-mounted into each job
+    container by Docker volume NAME (global to the daemon, so it needs no
+    path translation) via `act`'s `--container-options`.
     """
 
     start = time.monotonic()
     sha = pinned_sha(repo_root)
-    ci_lint_dir = repo_root / ".ci-lint"
+    ci_lint_dir = target_dir if target_dir is not None else repo_root / ".ci-lint"
 
     if (ci_lint_dir / ".git").is_dir():
         current = _run(["git", "rev-parse", "HEAD"], cwd=ci_lint_dir)

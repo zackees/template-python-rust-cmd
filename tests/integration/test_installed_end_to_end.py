@@ -82,6 +82,7 @@ def test_python_binding_names_a_known_host_os() -> None:
     """Sanity precondition the rest of this file leans on: the Python
     platform facade and the banner text agree on which host this is."""
     banner = bindings.version_banner()
+    # pylint: disable-next=unsupported-membership-test
     assert os_name() in banner
 
 
@@ -100,7 +101,7 @@ def test_python_binding_and_native_cli_json_output_match() -> None:
     `_native.version_banner_json()` (PyO3, called directly -- see the
     module docstring) vs. `template-cli --json` (native binary). Both
     call `template::version_banner_json()`."""
-    from_extension = _native.version_banner_json()
+    from_extension = _native.version_banner_json()  # pylint: disable=c-extension-no-member
     from_cli = _run_cli("--json")
     assert from_extension == from_cli
 
@@ -119,5 +120,5 @@ def test_extension_json_and_plain_surfaces_agree_on_the_banner_text() -> None:
     `bindings.py`) and `_native.version_banner_json()`'s embedded field
     must carry the identical banner string."""
     plain = bindings.version_banner()
-    decoded = json.loads(_native.version_banner_json())
+    decoded = json.loads(_native.version_banner_json())  # pylint: disable=c-extension-no-member
     assert decoded["version_banner"] == plain

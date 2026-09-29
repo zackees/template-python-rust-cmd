@@ -38,6 +38,16 @@ runs:
       uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       with:
         enable-cache: true
+        # This composite runs in an ARBITRARY consuming repo's CI (it
+        # installs the released template-cli binary via `uv tool
+        # install`), never in this repo's own precheck-planned jobs, so
+        # there is no `needs.precheck.outputs.cache_save` to bind to
+        # here (ci.toml's `[allow].setup-uv.require.save-cache = "plan"`
+        # only governs THIS repo's own workflows). Restore-only: this
+        # action never persists a durable cache entry into whatever
+        # consumer repo runs it (CACHE-003 -- missing/literal "true"
+        # both save unconditionally; explicit "false" does not).
+        save-cache: false
 
     - name: Provision Python
       shell: bash

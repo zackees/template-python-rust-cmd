@@ -12,9 +12,10 @@ act-inner has no dependency on where `.ci-lint` lives.
 
 from __future__ import annotations
 
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+import tomllib
 
 
 class CiTomlLiteError(RuntimeError):

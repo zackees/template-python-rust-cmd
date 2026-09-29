@@ -48,6 +48,7 @@ ACTION = ROOT / "action.yml"
 # — importing it never needs the `_native` extension to be built (see
 # that module's docstring).
 sys.path.insert(0, str(ROOT / "src"))
+# pylint: disable-next=wrong-import-position
 from template_python_rust_cmd.platforms import cli_binary_name  # noqa: E402
 
 BINARY_NAME = cli_binary_name()
