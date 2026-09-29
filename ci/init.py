@@ -32,7 +32,7 @@ def _run(cmd: list[str], *, cwd: Path) -> int:
 def _run_isolated_soldr(cmd: list[str], *, cwd: Path) -> int:
     """Same reasoning as `ci/fast.py::_run_isolated_soldr`: a nested PEP
     517 build resolves its OWN `soldr` (the instantiated tree's own
-    `pyproject.toml` `requires = ["soldr==0.9.25"]`), which must not
+    `pyproject.toml` `requires = ["soldr>=0.9.25"]`), which must not
     contend with the outer job's own soldr broker."""
     env = {
         k: v for k, v in os.environ.items() if not k.startswith(("SOLDR_", "ZCCACHE_"))

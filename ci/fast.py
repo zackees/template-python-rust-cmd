@@ -56,7 +56,7 @@ def _run(cmd: list[str]) -> int:
 
 def _run_isolated_soldr(cmd: list[str]) -> int:
     """Run a `uv` command whose PEP 517 build environment installs its OWN
-    `soldr` (pyproject.toml's `requires = ["soldr==0.9.25"]`) -- a SEPARATE
+    `soldr` (pyproject.toml's `requires = ["soldr>=0.9.25"]`) -- a SEPARATE
     binary from the one `.github/actions/soldr` already started a broker
     for on PATH. Two different soldr binaries cannot share one
     broker-owned root -- confirmed on real CI (run 36489839023, job

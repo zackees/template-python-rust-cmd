@@ -30,10 +30,14 @@ action's own `inputs:`, so a caller cannot override them even by accident.
   this pin is intentionally several commits ahead of `v0` for now, per
   `RUST-001`/`SEC-004`: every action reference is a full commit SHA with a
   version comment, never a branch or moving tag.
-- `version: "0.9.25"` (the `soldr` binary itself) matches
-  `pyproject.toml`'s `requires = ["soldr==0.9.25"]` — the PEP 517 backend's
-  own pin — so the CLI used by `./ci.py`/CI steps and the backend used by
-  `uv build`/`uv sync` are the exact same Soldr release.
+- No `version:` input is set for the `soldr` binary itself
+  ([zackees/ci.yml#18](https://github.com/zackees/ci.yml/issues/18),
+  `RUST-013`): it floats on `setup-soldr`'s own latest-release resolution,
+  matching `pyproject.toml`'s floor-only `requires = ["soldr>=0.9.25"]` —
+  the PEP 517 backend's own requirement — so the CLI used by
+  `./ci.sh`/CI steps and the backend used by `uv build`/`uv sync` always
+  resolve to the same current Soldr release, without a stale exact pin
+  in either place.
 
 ## Dylint cache fix validation (setup-soldr#538, v0.9.81)
 
