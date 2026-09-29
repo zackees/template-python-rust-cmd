@@ -28,6 +28,7 @@ the existing convention recorded in `ci/README.md`).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -403,8 +404,6 @@ def cmd_collect_wheels(args: argparse.Namespace) -> int:
 
 
 def _sha256_file(path: Path) -> str:
-    import hashlib
-
     h = hashlib.sha256()
     with path.open("rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
