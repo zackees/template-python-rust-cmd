@@ -2,7 +2,7 @@
 # Nothing here generates YAML: it bounds what the YAML may do and decides what each run selects.
 schema  = 3
 profile = "rust-pypi-app"
-linter  = "zackees/ci.yml@b1528416e7e8d14df78fdddcd25644182330eed2"      # the exact ci-lint commit precheck runs
+linter  = "zackees/ci.yml@bab8cbac9a78a1b2f0645ed082f54d0e3a23106d"      # the exact ci-lint commit precheck runs
 
 # ── Platforms ────────────────────────────────────────────────────────────────
 # Every platform compiles on linux (Soldr cross) and executes on its own runner.
@@ -44,23 +44,27 @@ binaries = [
 # ── Lint lanes ───────────────────────────────────────────────────────────────
 [lint.dylint]
 targets = "all-platforms"           # one check-only pass per declared target, all on Linux
-# shape/budget: round 2 could not measure D6 (see the worker report) --
-# the nightly-2026-02-28 Dylint driver has no catalogued asset, and
-# soldr's SOLDR_ALLOW_DYLINT_DRIVER_BUILD=1 source-build fallback fails
-# closed on real CI (nested-cargo toolchain resolution, upstream soldr
-# defect). Every "sequential" vs "multi-target" number gathered so far
-# is dominated by that failure/retry noise, not real lint time. Left at
-# round 1's starting values; a later round remeasures once the driver
-# is obtainable.
-shape   = "measure"                 # "multi-target" | "sequential" | "per-target-jobs"
-budget  = { warm = "235s", cold = "480s" }
+# shape: D6 measured round 3B, nightly-2026-05-28 driver now catalogued
+# (round 2's blocker resolved). Same-commit, both cold (no cache: PR
+# flow never writes), host + 5 cross targets, 6 declared platforms:
+#   sequential:    6 passes, 88.8s check time (+ ~15s prepare), job 148s
+#     (run 36500282280, job 109187749194)
+#   multi-target:  1 pass,   55.5s check time (+ ~14s prepare), job 114s
+#     (run 36501033796, job 109191488953)
+# multi-target is 37% faster on the check passes themselves and 23%
+# faster end to end -- confirms the D6 hypothesis (host-side proc-macro/
+# build-script artifacts compile once for every target in one
+# invocation, instead of once per sequential pass). Selected as the
+# winner; ci.yml's dylint job passes --shape multi-target accordingly.
+shape   = "multi-target"            # "multi-target" | "sequential" | "per-target-jobs"
+budget  = { warm = "115s", cold = "235s" }  # round 3B's own cold numbers; round 4 recalibrates "warm" once caching exists
 
 # ── Suites ───────────────────────────────────────────────────────────────────
 # Each id generates [ci-test-<id>] and [no-test-<id>]. A skip inside a required suite is a failure.
 [suites]
 unit        = { run = "ci/test.py unit",        required = true }
 smoke       = { run = "ci/wheel.py smoke",      required = true }    # clean venv: import + native CLI
-integration = { run = "ci/test.py integration" }
+integration = { run = "pytest -m integration tests/integration" }
 init        = { run = "ci/test.py init",        cache = "none" }     # from zero: proves caches mask nothing
 perf        = { run = "ci/perf.py",             kind = "bench", gating = false }
 
@@ -139,4 +143,31 @@ rule    = "GEN-005"
 path    = "ci.sh"
 reason  = "Gate launcher kept for now (owner-approved); replace with a Python entry point."
 issue   = "https://github.com/zackees/template-python-rust-cmd/issues/15"
+expires = "2026-12-31"
+
+# SEC-002 (as pinned at `linter` above) flags ANY job/top-level permissions
+# key other than `contents: read` / the publish job's `id-token: write` --
+# including `actions: read`, which round 3 needs on the precheck job (to
+# call ci_lint plan --reuse's read-only Actions runs/jobs API) and on
+# ci-ok (to live-verify a reused job before treating its "skipped" result
+# as a pass; zackees/ci.yml#6 round-3A "Reuse verification"). `actions:
+# read` is materially different from `actions: write`/`id-token: write`
+# (no ability to mutate or mint credentials) but the rule does not yet
+# make that distinction -- see the round-3B worker report's drafted
+# upstream issue. Declared here, per repo, rather than silently
+# suppressed; matches (rule, path) equality, so one entry per file covers
+# every `actions: read` occurrence in it (precheck job + top-level in
+# ci-precheck.yml; the precheck-caller job + ci-ok job in ci.yml).
+[[exceptions]]
+rule    = "SEC-002"
+path    = ".github/workflows/ci-precheck.yml"
+reason  = "actions: read (top-level + precheck job) is required for ci_lint plan --reuse's read-only Actions API lookups (title-edit reuse, ci.yml#6 round 3A). Read-only, not a mutation/OIDC grant; SEC-002 does not yet distinguish it from a wider grant."
+issue   = "https://github.com/zackees/ci.yml/issues/6"
+expires = "2026-12-31"
+
+[[exceptions]]
+rule    = "SEC-002"
+path    = ".github/workflows/ci.yml"
+reason  = "actions: read on the precheck-caller job (required to pass the permission down into ci-precheck.yml's workflow_call) and on ci-ok (to live-verify a reused job via GET /repos/.../actions/jobs/{id} before accepting a skip as a pass) is required for ci.yml#6 round 3A's reuse verification. Read-only, not a mutation/OIDC grant."
+issue   = "https://github.com/zackees/ci.yml/issues/6"
 expires = "2026-12-31"

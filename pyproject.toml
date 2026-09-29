@@ -77,6 +77,14 @@ minversion = "8.0"
 addopts = ["-ra", "--strict-markers"]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# `integration` (tests/integration/) is registered so `--strict-markers`
+# doesn't error on it, and so it stays an OPT-IN suite: the `unit` suite
+# invocation runs `-m "not integration"`; the `integration` suite
+# invocation runs `-m integration tests/integration` explicitly. See
+# tests/integration/README.md and zackees/ci.yml#6 round 3.
+markers = [
+    "integration: end-to-end tests against the installed package + native CLI (ci.toml [suites].integration; opt-in, see tests/integration/README.md)",
+]
 
 # Re-sync the editable install when these files change. Default uv
 # only watches pyproject.toml, so editable installs silently leave a

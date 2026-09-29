@@ -168,7 +168,11 @@ def _run_multi_target(host: DylintTarget, cross: list[DylintTarget]) -> list[Dyl
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default=str(ROOT))
-    parser.add_argument("--shape", choices=["sequential", "multi-target"], default="sequential")
+    # D6 (ci.yml#6 round 3B, measured on run 36501033796 vs 36500282280):
+    # multi-target is 37% faster on the check passes themselves (55.5s vs
+    # 88.8s) and 23% faster end to end (114s vs 148s job total) -- see
+    # ci.toml [lint.dylint]'s comment for the full numbers.
+    parser.add_argument("--shape", choices=["sequential", "multi-target"], default="multi-target")
     parser.add_argument("--results-out", default=None, help="write DylintPassResult[] JSON here")
     args = parser.parse_args(argv)
     repo = Path(args.repo).resolve()
