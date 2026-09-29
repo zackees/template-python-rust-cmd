@@ -63,7 +63,14 @@ platform's own runner) → `ci-ok` (the one required check, `if:
 always()`, calls `ci_lint gate --reuse ... --event ...`). Every job's
 display name carries its `ci_lint`-computed lane digest
 (`fast [<digest>]`, `platform-run (<id>) [<digest>]`), which is also how
-title-edit reuse matches an already-green job. `./ci.py all` still runs
+title-edit reuse matches an already-green job. Per zackees/ci.yml#12
+(`RUN-002`), a job's display `name:` also states where it builds vs. runs:
+`platform-build` always says `(on ubuntu-24.04, soldr)` (it cross-compiles
+on Linux for every lane, never on the target's own OS), and `platform-run`
+always says `(native, prebuilt)` (it executes on the lane's own runner
+with no Rust toolchain, never compiling). Job ids stay exactly
+`platform-build`/`platform-run` regardless -- only the display name gained
+the annotation. `./ci.py all` still runs
 locally and is what an agent should run before pushing — see "Commands"
 below for the exact local precheck command.
 
