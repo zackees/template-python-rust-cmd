@@ -51,7 +51,18 @@ dev = [
 # size gains real value from import-order determinism (many modules mix
 # stdlib, third-party and local `ci.*`/`template_python_rust_cmd.*`
 # imports) at zero cost -- ruff both detects and `--fix`es it.
-extend-select = ["I"]
+extend-select = [
+    "I",
+    # Function-complexity ratchet (zackees/ci.yml#229, PY-004): C901 at
+    # ruff's default ceiling (10); an existing offender carries a line-level
+    # `# noqa: C901`, and RUF100 flags one that no longer suppresses anything.
+    "C901",
+    "RUF100",
+]
+
+# A `# noqa: S310` names a flake8-bandit rule this config does not select;
+# RUF100 must not report it as unused.
+external = ["S310"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["template_python_rust_cmd", "ci"]

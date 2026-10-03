@@ -253,7 +253,7 @@ def _uv_run_has_protection(words: list[str]) -> bool:
     return PROTECTIVE_FLAGS.issubset(seen)
 
 
-def _nested_shell(words: list[str]) -> str | None:
+def _nested_shell(words: list[str]) -> str | None:  # noqa: C901
     if not words:
         return None
     head = _program_name(words[0])
@@ -276,7 +276,7 @@ def _nested_shell(words: list[str]) -> str | None:
     return None
 
 
-def _check_segment(seg: str) -> tuple[str, str] | None:
+def _check_segment(seg: str) -> tuple[str, str] | None:  # noqa: C901
     words = _strip_env_prefix(_tokenize(seg))
     if not words:
         return None

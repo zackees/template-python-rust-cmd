@@ -45,7 +45,7 @@ ACTION_FILES = [
 REQUIRED_TOP = ("name", "description", "runs")
 
 
-def _check_one(path: Path) -> list[str]:
+def _check_one(path: Path) -> list[str]:  # noqa: C901
     assert yaml is not None  # guarded by run(); narrow for type-checkers
     errs: list[str] = []
     if not path.is_file():
