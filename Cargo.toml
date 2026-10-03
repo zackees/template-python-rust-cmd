@@ -33,6 +33,11 @@ unwrap_used = "deny"
 unwrap_in_result = "deny"
 panic_in_result_fn = "deny"
 expect_used = "warn"
+# Function-complexity ratchet (zackees/ci.yml#229, RUST-018): clippy's default
+# ceilings (cognitive 25, 100 lines). A function over one carries
+# `#[expect(clippy::<lint>, reason = "...")]`, never `allow`.
+cognitive_complexity = "warn"
+too_many_lines = "warn"
 
 # Keep third-party crates release-grade even in the dev profile.
 # `cargo build` (no --release) compiles first-party crates unoptimized

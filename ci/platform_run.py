@@ -115,7 +115,7 @@ class BinaryRunResult:
         }
 
 
-def cmd_run_tests(args: argparse.Namespace) -> int:
+def cmd_run_tests(args: argparse.Namespace) -> int:  # noqa: C901
     """Execute every declared test binary this lane's platform-build leg
     staged, directly -- no nextest, no archive replay (soldr#3294 never
     applies here; see ci/platform_build.py's module docstring). Each

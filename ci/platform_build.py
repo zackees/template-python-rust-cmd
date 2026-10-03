@@ -229,7 +229,7 @@ def _make_executable(path: Path) -> None:
     path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def cmd_stage(args: argparse.Namespace) -> int:
+def cmd_stage(args: argparse.Namespace) -> int:  # noqa: C901
     stage_dir = Path(args.out)
     bin_dir = stage_dir / "bin"
     cli_dir = stage_dir / "cli"
