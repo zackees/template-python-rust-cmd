@@ -96,6 +96,22 @@ def main() -> int:
         cmd += ["--reuse", str(reuse_path)]
     if event_path is not None:
         cmd += ["--event", str(event_path)]
+    # zackees/ci.yml#162 (GEN-021): a `reuse-check.json` proving a skipped
+    # required job. Distinct from `--reuse` above, which proves a lane of
+    # this same PR from an earlier attempt of its own head. The path is a
+    # runner-local file the workflow downloads, never an interpolated
+    # expression. Absent (every PR run, and any run with no decision) simply
+    # means no skip is credited.
+    db_reuse = os.environ.get("CI_OK_DEFAULT_BRANCH_REUSE", "").strip()
+    if db_reuse:
+        if not Path(db_reuse).is_file():
+            print(
+                f"ci/ci_ok.py: CI_OK_DEFAULT_BRANCH_REUSE points at {db_reuse!r}, "
+                "which is not a file -- refusing to run the gate",
+                file=sys.stderr,
+            )
+            return 2
+        cmd += ["--default-branch-reuse", db_reuse]
     print(f"+ {' '.join(cmd)}", flush=True)
     proc = subprocess.run(cmd, cwd=ROOT, check=False)
     return proc.returncode
