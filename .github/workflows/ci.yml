@@ -93,17 +93,8 @@ jobs:
         with:
           fetch-depth: 2
 
-      # Skipped under act (zackees/ci.yml#6 round-4B, act parity):
-      # actions/checkout's `repository:` override needs a real token even
-      # for a public repo, which act does not auto-populate (see
-      # ci/localrun/README.md "GITHUB_TOKEN and cross-repo checkouts").
-      # `python3 ci/local.py act`'s host-side step (ci/localrun/
-      # ci_lint_checkout.py) already git-clones the SAME ci.toml-pinned
-      # SHA into `.ci-lint/` in the bind-mounted repo BEFORE act ever
-      # starts, so it is already present here under act; this step would
-      # be redundant even if it worked.
+      # The pinned checkout runs on both GitHub and Bosn → act2.
       - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
-        if: env.ACT != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
@@ -162,9 +153,8 @@ jobs:
         with:
           fetch-depth: 2
 
-      # Skipped under act -- see the `fast` job's identical step for why.
+      # The pinned checkout runs on both GitHub and Bosn → act2.
       - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
-        if: env.ACT != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
@@ -420,9 +410,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Skipped under act -- see the `fast` job's identical step for why.
+      # The pinned checkout runs on both GitHub and Bosn → act2.
       - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
-        if: env.ACT != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
@@ -530,9 +519,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Skipped under act -- see the `fast` job's identical step for why.
+      # The pinned checkout runs on both GitHub and Bosn → act2.
       - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
-        if: env.ACT != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
@@ -656,9 +644,8 @@ jobs:
         with:
           ref: ${{ github.event.inputs.sha || github.sha }}
 
-      # Skipped under act -- see `fast`'s identical step for why.
+      # The pinned checkout runs on both GitHub and Bosn → act2.
       - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
-        if: env.ACT != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
@@ -1110,9 +1097,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Skipped under act -- see the `fast` job's identical step for why.
+      # The pinned checkout runs on both GitHub and Bosn → act2.
       - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
-        if: env.ACT != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
@@ -1170,9 +1156,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Skipped under act -- see the `fast` job's identical step for why.
+      # The pinned checkout runs on both GitHub and Bosn → act2.
       - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
-        if: env.ACT != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
