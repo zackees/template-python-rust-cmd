@@ -6,6 +6,12 @@ by the complete original workflow through `bosn ci run` and pinned act2.
 Selected `--lanes` runs are diagnostics. Preserve remote-selected native
 coverage and full release validation; neither is waived by this entry point.
 
+Live GitHub cache trimming runs in the existing serialized `cache-janitor`
+job, including bounded trims for open same-repository PRs. It does not run
+inside precheck. Bosn reports that job and the live cache-budget audit as
+remote-only under GATE-012; their GitHub behavior remains required there.
+These reports supply no evidence about the local cache store.
+
 Repo automation. Two structured sub-packages; the release-flow scripts
 that used to live here (`build_wheel.py`, `publish.py`) were removed in
 zackees/ci.yml#6 round 1 — see below.

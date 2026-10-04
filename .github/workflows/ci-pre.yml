@@ -151,9 +151,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      # `write` (not `read`): round-4C's `ci_lint cache trim` step below
-      # needs to delete entries; `write` covers `read` for the same scope.
-      actions: write
+      actions: read
     outputs:
       plan: ${{ steps.plan.outputs.plan }}
       platforms_json: ${{ steps.plan.outputs.platforms_json }}
@@ -225,23 +223,9 @@ jobs:
           PLAN_JSON: ${{ steps.plan.outputs.plan }}
         run: python3 ci/plan_profile.py
 
-      # Round-4C (ci.yml#6 §6 "Precheck trims"). Same-repo PR events only
-      # (a fork PR's GITHUB_TOKEN can't delete another ref's cache entries
-      # -- ci_lint cache trim already fails safe on that, but skipping the
-      # attempt outright avoids a noisy, guaranteed-401 API call on every
-      # fork PR push). Deletes CACHE-008 entries only (closed/merged-PR
-      # deltas + stale-base deltas), capped at 20/run so precheck stays
-      # fast; the `cache-janitor` job below (every push/schedule/dispatch/PR close) picks up the rest.
-      - name: Trim stale PR compile-delta cache entries
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          PYTHONPATH: .ci-lint
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 -m ci_lint cache trim --repo . --max-deletes 20
-
   # zackees/ci.yml#23 §3/§4: the cache janitor runs on EVERY push, schedule,
-  # dispatch, and `pull_request: closed` (ci.yml's trigger list) -- never on
-  # an open PR's own pushes. One repo-wide, non-cancelling lock (GEN-017) so
+  # dispatch and closed PRs. Open same-repository PRs run the bounded trim
+  # in this job as well; maintenance stays outside the precheck commands. One repo-wide, non-cancelling lock (GEN-017) so
   # two sweeps never race and a sweep is never cancelled mid-delete; no
   # other job takes a lock or `needs:` this one (GEN-016), so a queued
   # sweep never delays a check. Deletes: every entry of a closed/merged PR
@@ -252,7 +236,9 @@ jobs:
   # required job restores. Prints a before/after table.
   cache-janitor:
     name: cache-janitor
-    if: github.event_name != 'pull_request' || github.event.action == 'closed'
+    if: github.event_name != 'pull_request' || github.event.action == 'closed' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      CI_REMOTE_ONLY: Maintains live GitHub Actions caches; local build caches are audited separately
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
@@ -274,7 +260,15 @@ jobs:
           path: .ci-lint
           persist-credentials: false
 
+      - name: Trim stale PR compile-delta cache entries
+        if: github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          PYTHONPATH: .ci-lint
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -m ci_lint cache trim --repo . --max-deletes 20
+
       - name: Janitor (closed PRs, superseded/retired/undeclared, stale)
+        if: github.event_name != 'pull_request' || github.event.action == 'closed'
         env:
           PYTHONPATH: .ci-lint
           GITHUB_TOKEN: ${{ github.token }}
@@ -286,6 +280,8 @@ jobs:
   # `pr-<N>` entries caused the breach.
   cache-budget:
     name: cache-budget
+    env:
+      CI_REMOTE_ONLY: Audits the live GitHub Actions cache budget
     if: github.event.action != 'closed'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -305,14 +301,9 @@ jobs:
           path: .ci-lint
           persist-credentials: false
 
-      # Skipped under act (zackees/ci.yml#47): `ci_lint cache budget` needs
-      # GITHUB_TOKEN + GITHUB_REPOSITORY to call the live GitHub Actions
-      # cache API -- act supplies neither. Same "skipped (local), never
-      # treated as passing" treatment the `precheck` job's own
-      # ACT-001/CACHE-005/006/008 checks already get; verify this on
-      # GitHub-hosted CI, not locally.
+      # Bosn reports this live service audit as remote-only (GATE-012).
+      # The GitHub verdict remains required there; no local pass is inferred.
       - name: Cache budget verdict
-        if: env.ACT != 'true'
         env:
           PYTHONPATH: .ci-lint
           GITHUB_TOKEN: ${{ github.token }}
