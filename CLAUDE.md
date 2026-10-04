@@ -95,8 +95,8 @@ bounds what the workflow may do and how it plans each run.
 
 ```bash
 python3 ci/local.py precheck                  # ~0.5s warm; ~1-2s cold (clones .ci-lint/ once)
-python3 ci/local.py act                       # precheck, then fast+dylint via bosn -> act
-python3 ci/local.py act --lanes fast          # just one lane
+python3 ci/local.py act                       # precheck, then the complete PR workflow via Bosn -> act2
+python3 ci/local.py act --lanes fast          # selected-job diagnostic
 python3 ci/local.py act --title "[ci-full] …" # exercise a different tag selection
 ```
 
@@ -116,21 +116,17 @@ and its Stop hook (`.claude/settings.json` →
 automatically; run it by hand to iterate faster than the hook's
 edit-triggered cadence.
 
-`act` additionally requires `bosn`/`act`/`docker` on `PATH`: it runs the
-selected `ci.yml` jobs for real, through the `bosn.toml` `act` stack
-(pinned `act` 0.2.88 + a clang-patched runner image — see
-`ci/docker/act/README.md` for zackees/ci.yml#6 D7), then audits the
-local act cache store against `ci.toml [cache].budget`/`.retired`
-(`ACT-001`, `ci/localrun/cache_audit.py`) so a local speedup can never
-reward a cache family the remote policy forbids
-(zackees/zccache#1760). A lane not in `ci.toml [local].lanes` (any
-non-Linux platform) is reported "not covered locally", never as passed.
-**Known gap:** a full green `act` run of `fast`/`dylint` needs a
-`GITHUB_TOKEN` for `ci.yml`'s cross-repo `.ci-lint` checkout step, which
-act (unlike real GitHub Actions) never auto-populates. This tool never
-creates one; add your own PAT to a gitignored `.secrets` file at the
-repo root (act's own default `--secret-file`) to opt in — see
-`ci/localrun/README.md`'s "GITHUB_TOKEN and cross-repo checkouts".
+`act` requires a published Bosn CLI with its supervised CI runner on PATH.
+It calls `bosn ci run --workflow .github/workflows/ci.yml --trigger pr --wait`
+without a job filter, so precheck, fast (build, tests and installed wheel),
+Dylint and CI OK run as one original workflow. Bosn owns the pinned act2
+binary, frozen Git snapshot, isolated Docker engine, action/cache storage,
+logs and cleanup. The legacy host-socket `act-run` stack is no longer used.
+`--lanes` requests selected-job diagnostics, never a full PR proof.
+`--title` is passed as `--pr-title` to Bosn's event adapter. Native coverage
+selected by that title remains required; unsupported runners must fail
+rather than being reported as passed. Ordinary PRs retain their existing
+coverage and release validation remains the original full release workflow.
 
 The `dylint` job's own logic lives in `ci/dylint.py` (host + every
 declared cross target, one Linux job — `soldr dylint prepare --target T`

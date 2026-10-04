@@ -4,8 +4,8 @@
 zackees/ci.yml#6 section 11 ("bosn -> act: local CI is first class").
 
     python3 ci/local.py precheck              # ~seconds; the agent Stop-hook / pre-push gate
-    python3 ci/local.py act                   # precheck, then the fast+dylint lanes via bosn -> act
-    python3 ci/local.py act --lanes fast      # just one lane
+    python3 ci/local.py act                   # precheck, then the complete PR workflow via Bosn -> act2
+    python3 ci/local.py act --lanes fast      # selected-job diagnostic
     python3 ci/local.py act --title "[ci-full] ..."  # exercise a different tag selection
 
 All logic lives in `ci/localrun/` (stdlib only, except where it shells
@@ -40,14 +40,11 @@ def _cmd_act(args: argparse.Namespace) -> int:
 
 
 def _cmd_act_inner(_args: argparse.Namespace) -> int:
-    # Deliberately lazy: act_inner.py is only ever meant to run INSIDE the
-    # bosn act-stack container (its own docstring), and importing it
-    # eagerly at module load would pull that container-only code path
-    # into every `ci/local.py` invocation, including plain `precheck`.
-    # pylint: disable-next=import-outside-toplevel
-    from ci.localrun.act_inner import main as act_inner_main
-
-    return act_inner_main()
+    print(
+        "act-inner is retired; use python3 ci/local.py act for Bosn → act2",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,12 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_precheck.set_defaults(func=_cmd_precheck)
 
     p_act = sub.add_parser(
-        "act", help="precheck, then run the Linux lanes through bosn -> act"
+        "act", help="precheck, then the complete PR workflow through Bosn -> act2"
     )
     p_act.add_argument(
         "--lanes",
         default=None,
-        help="comma-separated lane ids (default: ci.toml [local].lanes)",
+        help="comma-separated job IDs for diagnostics (default: complete PR workflow)",
     )
     p_act.add_argument(
         "--title", default=None, help="PR title driving the act event (tags -> plan)"

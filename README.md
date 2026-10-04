@@ -51,8 +51,10 @@ workflow files) may do and decides what each run selects.
 
 - **Local loop.** `python3 ci/local.py precheck` runs the same precheck in
   seconds (the pre-push / agent Stop-hook gate);
-  `python3 ci/local.py act` then runs the `fast` + `dylint` lanes locally
-  through bosn -> act (`--lanes fast`, `--title "[ci-full] ..."`).
+  `python3 ci/local.py act` then runs the complete PR workflow locally
+  through Bosn → pinned act2, including precheck, fast, Dylint and CI OK.
+  `--lanes fast` selects a diagnostic job; `--title "[ci-full] ..."`
+  selects the same title-driven coverage as the remote workflow.
 
 ## Repo Layout
 
