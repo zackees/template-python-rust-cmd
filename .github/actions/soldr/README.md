@@ -22,20 +22,13 @@ action's own `inputs:`, so a caller cannot override them even by accident.
 
 ## Pinning
 
-- `zackees/setup-soldr@aa75de0e55ed9751cdee04bf5200c46fe8d59851` (`v0.9.84`,
-  the newest tagged release as of 2026-09-29 -- setup-soldr#545: the
-  build-cache tiny-delta-skip save gate counts new compiles across every
-  job session, not just the last; on top of v0.9.83, which adds `dylint-targets`,
-  ci.yml#9: setup-soldr itself now prepares rust-std for every declared
-  cross target and keys the Dylint foundation/output cache on the full
-  target set, which is why `ci/dylint.py` no longer runs `soldr dylint
-  prepare --target` in a loop -- see the `dylint` job). `v0` (the major-version
-  moving tag) still resolves to `67ed4018aca013f8388050ac9bc264244f9b742c`
-  (the commit `v0.9.80` pointed at) as of this writing — promoting `v0`
-  needs a downstream FastLED/fbuild canary run that had not landed yet, so
-  this pin is intentionally several commits ahead of `v0` for now, per
-  `RUST-001`/`SEC-004`: every action reference is a full commit SHA with a
-  version comment, never a branch or moving tag.
+- `zackees/setup-soldr@v0` follows the fleet's sanctioned first-party
+  moving ref. Its promotion is gated by setup-soldr's own downstream
+  validation; SEC-004 expressly permits this ref. Other action references
+  remain SHA-pinned. See [the Rust policy's pinning exception](https://github.com/zackees/ci.yml/blob/main/docs/policy-rust.md#reconciling-sec-004-with-float-by-default).
+- The wrapper continues to request every declared Dylint cross target and
+  preserves its fixed cache/save inputs. A change in the upstream action
+  must pass the complete local PR workflow and ordinary remote checks.
 - No `version:` input is set for the `soldr` binary itself
   ([zackees/ci.yml#18](https://github.com/zackees/ci.yml/issues/18),
   `RUST-013`): it floats on `setup-soldr`'s own latest-release resolution,

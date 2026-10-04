@@ -196,7 +196,7 @@ runs:
   steps:
     - name: setup-soldr
       id: setup
-      uses: zackees/setup-soldr@aa75de0e55ed9751cdee04bf5200c46fe8d59851 # v0.9.84
+      uses: zackees/setup-soldr@v0 # fleet-sanctioned gated first-party moving ref
       with:
         # No `version:` input (zackees/ci.yml#18, RUST-013): float on
         # setup-soldr's own latest-release resolution, matching pyproject.toml's
