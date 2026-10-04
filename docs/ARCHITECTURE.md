@@ -1,5 +1,11 @@
 # Architecture
 
+
+Local PR validation uses `python3 ci/local.py act`: a cheap precheck followed
+by the complete original workflow through `bosn ci run` and pinned act2.
+Selected `--lanes` runs are diagnostics. Preserve remote-selected native
+coverage and full release validation; neither is waived by this entry point.
+
 ## Goal
 
 Ship one Python wheel that exposes:

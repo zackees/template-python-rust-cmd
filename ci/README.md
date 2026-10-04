@@ -1,5 +1,11 @@
 # `ci/`
 
+
+Local PR validation uses `python3 ci/local.py act`: a cheap precheck followed
+by the complete original workflow through `bosn ci run` and pinned act2.
+Selected `--lanes` runs are diagnostics. Preserve remote-selected native
+coverage and full release validation; neither is waived by this entry point.
+
 Repo automation. Two structured sub-packages; the release-flow scripts
 that used to live here (`build_wheel.py`, `publish.py`) were removed in
 zackees/ci.yml#6 round 1 — see below.
