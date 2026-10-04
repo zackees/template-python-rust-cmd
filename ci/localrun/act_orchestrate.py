@@ -49,10 +49,10 @@ def run_act(repo_root: Path, *, lanes_arg: str | None, title: str) -> int:
             WORKFLOW,
             "--trigger",
             "pr",
-            "--pr-title",
-            title,
             "--wait",
         ]
+        if title:
+            command.extend(["--pr-title", title])
         if job is not None:
             command.extend(["--job", job])
         print(
