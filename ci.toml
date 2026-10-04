@@ -226,6 +226,28 @@ runner = "bosn-act"
 lanes  = ["precheck", "fast", "dylint"]
 cache  = "machine"
 
+# ── Default-branch verified reuse (GEN-021, zackees/ci.yml#162) ─────────────
+# A push to `main` may skip a required job when the one merged pull request
+# already validated a byte-identical tree: one merged PR, `merge_commit_sha`
+# equal to the pushed SHA, the same tree, and a green, fresh per-job proving
+# run. Anything else -- a squash-merge batch, a drifted tree, a failed or
+# stale proving run -- leaves every job running.
+#
+# Only the `fast` lane is skippable. `dylint` and the platform lanes keep
+# running on every main push because they are the default-branch cache
+# writers: skipping them would stale the caches every PR restores from and
+# pay back the saving many times over.
+#
+# The drift backstop is the daily `schedule` trigger below (ci.toml
+# `[flow.nightly]`), which runs the full tier on a fixed cadence regardless
+# of what reuse decides, plus `--max-age-hours`: a proving run older than
+# that forces a full run.
+[reuse.default-branch]
+mode           = "enforce"
+workflows      = ["ci.yml"]
+required-jobs  = "plan"
+max-age-hours  = 24
+
 # ── Allowlists ───────────────────────────────────────────────────────────────
 [allow]
 workflows         = { "ci.yml" = ["pull_request", "push:main", "schedule", "workflow_dispatch"], "ci-pre.yml" = ["workflow_call"] }
@@ -252,7 +274,7 @@ setup-uv          = { require = { save-cache = "plan" } }
 # mock-publish token -- SEC-002 additionally always requires that grant
 # be paired with `environment: pypi` on the `publish` job specifically,
 # allowlisted here or not.
-permissions       = { "actions: write" = ["cache-maint", "precheck", "fast", "cache-janitor"], "id-token: write" = ["publish"] }
+permissions       = { "actions: write" = ["cache-maint", "precheck", "fast", "cache-janitor"], "id-token: write" = ["publish"], "pull-requests: read" = ["reuse-decision"] }
 tools             = ["soldr", "uv", "python3", "yq", "git"]
 secrets           = []
 platform-selector = "crates/private/template-platform/src/lib.rs"   # the ONE file allowed to select on host
