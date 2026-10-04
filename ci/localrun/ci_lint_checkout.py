@@ -11,8 +11,10 @@ network cost at all.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,17 +60,26 @@ def pinned_sha(repo_root: Path) -> str:
     return m.group(2)
 
 
-def _run(cmd: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        cwd=str(cwd),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-        env={"GIT_TERMINAL_PROMPT": "0"},
-    )
+@dataclass(frozen=True)
+class GitResult:
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+def _run(cmd: list[str], *, cwd: Path) -> GitResult:
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    with (
+        tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stdout,
+        tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stderr,
+    ):
+        result = subprocess.run(
+            cmd, cwd=cwd, stdout=stdout, stderr=stderr, check=False, env=env
+        )
+        stdout.seek(0)
+        stderr.seek(0)
+        return GitResult(result.returncode, stdout.read(), stderr.read())
 
 
 def ensure_ci_lint(
