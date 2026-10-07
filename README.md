@@ -51,8 +51,10 @@ workflow files) may do and decides what each run selects.
 
 - **Local loop.** `python3 ci/local.py precheck` runs the same precheck in
   seconds (the pre-push / agent Stop-hook gate);
-  `python3 ci/local.py act` then runs the complete PR workflow locally
-  through Bosn → pinned act2, including precheck, fast, Dylint and CI OK.
+  The default `python3 ci/local.py act` requires a clean committed tree and
+  delegates execution or fresh-result reuse to the shared attestation gate;
+  success amends HEAD with proof trailers. See the authoritative
+  [local-loop contract](CLAUDE.md#ci).
   `--lanes fast` selects a diagnostic job; `--title "[ci-full] ..."`
   selects the same title-driven coverage as the remote workflow.
 

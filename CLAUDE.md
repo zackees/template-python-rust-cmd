@@ -117,9 +117,24 @@ automatically; run it by hand to iterate faster than the hook's
 edit-triggered cadence.
 
 `act` requires a published Bosn CLI with its supervised CI runner on PATH.
-It calls `bosn ci run --workflow .github/workflows/ci.yml --trigger pr --wait`
+The default calls the pinned shared `ci-lint local-gate run`. Its declaration
+in `local-gate.toml` calls
+`bosn ci run --workflow .github/workflows/ci.yml --trigger pr --wait --json`
 without a job filter, so precheck, fast (build, tests and installed wheel),
-Dylint and CI OK run as one original workflow. Bosn owns the pinned act2
+Dylint and CI OK run as one original workflow. The shared tool validates
+qualified execution evidence and writes tree/parent/input-bound commit
+trailers only after success. Repeating an unchanged qualified local run may
+reuse its fresh lane receipts. Start from a clean committed tree.
+
+`ci-attestations.yml` maps only fast and Dylint checks. The hosted verifier
+and shared CI OK aggregator independently check the immutable PR-base policy
+and head proof before crediting a skipped job. Remote cache maintenance and
+its reusable precheck caller remain required. Title tags, forks, audit
+samples, missing proof and changed trust surfaces force remote execution;
+main pushes and release dispatches never use local-attestation skips.
+Unattested developer heads remain allowed in the pilot and run remotely
+(`mode = "shadow"`). The independent end-to-end pilot is being qualified in
+[zackees/ci.yml#362](https://github.com/zackees/ci.yml/issues/362). Bosn owns the pinned act2
 binary, frozen Git snapshot, isolated Docker engine, action/cache storage,
 logs and cleanup. The legacy host-socket `act-run` stack is no longer used.
 `--lanes` requests selected-job diagnostics, never a full PR proof.

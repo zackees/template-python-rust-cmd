@@ -1,10 +1,11 @@
 # Update Procedure
 
 
-Local PR validation uses `python3 ci/local.py act`: a cheap precheck followed
-by the complete original workflow through `bosn ci run` and pinned act2.
-Selected `--lanes` runs are diagnostics. Preserve remote-selected native
-coverage and full release validation; neither is waived by this entry point.
+Default `python3 ci/local.py act` requires a clean committed tree, uses the
+shared gate's execution or fresh-result reuse, and amends HEAD on success.
+See the [local-loop contract](CLAUDE.md#ci).
+Explicit title/job selections remain diagnostics; native and release coverage
+remain required.
 
 When changing repo structure, CI gates, release flow, or agent
 guidance, walk this checklist so nothing rots out of sync.

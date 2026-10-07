@@ -30,20 +30,22 @@ fix has two halves, both here:
 | `event.py` | host | `ci_lint plan --act <path>` -- the one place act's `--eventpath` JSON is built, so a local run can't select a lane the real planner wouldn't. |
 | `ci_toml_lite.py` | host + container | A narrow `tomllib` reader for just `[cache]` and `[local]` -- used where a full `ci_lint` checkout isn't guaranteed on `PYTHONPATH` (inside the container). |
 | `sizes.py` | host + container | `parse_size("9GB") -> int`, duplicated from (not imported from) `ci_lint.rules.cache_static.parse_size` for the same reason. |
-| `act_orchestrate.py` | host | `ci/local.py act`: runs the cheap precheck, then submits the complete original PR workflow to `bosn ci run`; explicit selected jobs are diagnostics. |
+| `act_orchestrate.py` | host | `ci/local.py act`: cheap precheck, then shared gate execution/reuse and HEAD attestation; explicit selections are diagnostics. See the local-loop contract below. |
 | `act_inner.py` | **inside** the bosn `act` stack container | `ci/local.py act-inner`: builds the clang-patched runner image if missing, runs `act` per lane against the host Docker engine (bind-mounted socket), labels and removes the sibling job containers it creates, runs the cache audit, writes `.act-local/result.json`. |
 | `cache_audit.py` | container | `ACT-001`: audits act's local cache-server store against `ci.toml [cache].budget` and `[cache].retired`. |
 
 ## Current runner
 
-The default entry point delegates the complete PR workflow to Bosn's pinned
-act2, with no job filter. The original workflow selects its own jobs from the
-PR event and title. Bosn supplies the frozen checkout and owns isolated
-engine creation, actions/cache storage and cleanup. The legacy `act-inner`
-command refuses execution; it no longer starts stock act on the host socket.
-The `event.py`, `act_inner.py` and Docker-stack descriptions below record
-historical investigation, not the current runner implementation. Cache audit
-remains a separate utility; delegation alone does not prove its budget passed.
+The default requires a clean committed tree, delegates execution or fresh
+result reuse to the pinned shared gate, and amends HEAD with attestation
+trailers on success. The original complete workflow remains the execution
+command, without a job filter. See the authoritative
+[local-loop contract](../../CLAUDE.md#ci).
+The legacy `act-inner` command refuses execution. The table entries for
+`event.py`, `act_inner.py` and the Docker stack describe historical code,
+not the current entry point. Cache audit remains a separate utility;
+delegation alone does not prove the local store budget passed.
+
 
 ## act's cache-server on-disk format (empirically verified 2026-09-28)
 
