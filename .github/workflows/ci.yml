@@ -175,7 +175,13 @@ jobs:
     outputs:
       reuse: ${{ steps.reuse.outputs.reuse }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Checkout CI policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: zackees/ci.yml
           ref: 551cd2f29220787bed92002bf2de5822ae050159
@@ -185,6 +191,7 @@ jobs:
       - name: Verified default-branch reuse
         id: reuse
         env:
+          PYTHONPATH: .ci-lint
           GITHUB_TOKEN: ${{ github.token }}
           # Via env, never interpolated into `run:` (script-injection rule).
           FAST_DIGEST: ${{ fromJSON(needs.precheck.outputs.lane_digests_json).fast }}
