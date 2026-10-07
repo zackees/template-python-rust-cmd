@@ -297,7 +297,9 @@ jobs:
           path: ${{ steps.delta-prep.outputs.delta-archive-path }}
 
       - name: Compile-delta -- apply onto the restored base (before building)
-        if: github.event_name == 'pull_request' && steps.restore-delta.outputs.matched-key != ''
+        # The shared apply command owns missing/stale payload handling.
+        # Run it on every PR so both backends retain its explicit verdict.
+        if: github.event_name == 'pull_request'
         env:
           PYTHONPATH: .ci-lint
         run: python3 ci/cache_delta.py apply --build-cache-path "${{ steps.setup-soldr.outputs.build-cache-path }}" --delta-archive "${{ steps.delta-prep.outputs.delta-archive-path }}" --base-manifest "${{ steps.delta-prep.outputs.base-manifest-path }}"
