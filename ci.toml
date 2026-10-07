@@ -2,7 +2,7 @@
 # Nothing here generates YAML: it bounds what the YAML may do and decides what each run selects.
 schema  = 3
 profile = "rust-pypi-app"
-linter  = "zackees/ci.yml@0f4fba16eef07d72632d4c6503c252ac99f29856"      # the exact ci-lint commit precheck runs
+linter  = "zackees/ci.yml@551cd2f29220787bed92002bf2de5822ae050159"      # the exact ci-lint commit precheck runs
 
 # ── Platforms ────────────────────────────────────────────────────────────────
 # Every platform compiles on linux (Soldr cross) and executes on its own runner.
@@ -190,7 +190,7 @@ compile    = { via = "setup-soldr:build-cache",     max = "110MB", lockfile = tr
 # pre-round-4 placeholder, carried forward; re-measure via `ci-lint
 # cache audit` after the first writer-flow (main) run and tighten this
 # to measured x ~1.5 like every other family above.
-sdk        = { via = "setup-soldr:cross-targets",   max = "500MB", per = "cross-platform" }
+sdk        = { via = "setup-soldr:cross-targets",   max = "500MB", per = "cross-platform", evict = "lru" }
 # key = "setup-soldr-dylint-v2-{os}-{arch}-{target}-{digest}-dylint"
 # (resolve-setup.ts:1185) -- the nightly Dylint toolchain + driver +
 # foundation crates, ONE entry regardless of how many --target passes the
@@ -198,7 +198,7 @@ sdk        = { via = "setup-soldr:cross-targets",   max = "500MB", per = "cross-
 # 668.5MB live (`setup-soldr-dylint-v2-linux-x64-...-dylint`), previously
 # undeclared (CACHE-001 on every run). per="none": doesn't scale with
 # declared platforms -- it is the one Linux Dylint job's own toolchain.
-dylint     = { via = "setup-soldr:dylint",          max = "1024MB", per = "none", min = "1MB" }
+dylint     = { via = "setup-soldr:dylint",          max = "1024MB", per = "none", min = "1MB", evict = "lru" }
 # key = "setup-soldr-dylint-output-v2-{os}-{arch}-{hash}-{lockhash}" (setup-soldr >= v0.9.82, resolve-setup.ts:1258; v1 is retired above) -- the multi-target shape's own lint-output cache, one entry per
 # commit-state generation (older generations are CACHE-006 "superseded",
 # not concurrent per-platform variants -- the 3 live entries observed are 3

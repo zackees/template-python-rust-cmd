@@ -46,7 +46,34 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  verify:
+    name: Verify local attestation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      trusted: ${{ steps.verify.outputs.trusted }}
+      skip_fast: ${{ steps.verify.outputs.skip_fast }}
+      skip_dylint: ${{ steps.verify.outputs.skip_dylint }}
+    steps:
+      - name: Checkout source history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Checkout CI policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: zackees/ci.yml
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          path: .ci-lint
+          persist-credentials: false
+      - name: Verify local gate and decide per-job skips
+        id: verify
+        env:
+          PYTHONPATH: .ci-lint
+        run: python3 -P -m ci_lint local-gate verify --repo . --trust --github-output
+
   precheck:
+    needs: verify
     uses: ./.github/workflows/ci-pre.yml
     permissions:
       contents: read
@@ -98,7 +125,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -151,7 +178,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -172,7 +199,7 @@ jobs:
 
   fast:
     name: fast [${{ fromJSON(needs.precheck.outputs.lane_digests_json).fast }}]
-    needs: [precheck, cache-maint, reuse-decision]
+    needs: [verify, precheck, cache-maint, reuse-decision]
     # `!cancelled() && !failure()`, not a bare default/`always()`: runs
     # unless precheck or cache-maint actually FAILED (still skips if
     # either was cancelled), but tolerates cache-maint's normal SKIP on
@@ -180,7 +207,7 @@ jobs:
     # writer flows) -- the plain default `if:` (implicit `success()`)
     # would otherwise skip `fast` on every PR too, since `success()` is
     # false when any `needs:` entry is skipped, not just failed.
-    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && needs.precheck.outputs.fast_reused != 'true'  && needs.reuse-decision.outputs.reuse != 'true' }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && needs.precheck.outputs.fast_reused != 'true' && needs.verify.outputs.skip_fast != 'true'  && needs.reuse-decision.outputs.reuse != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -207,7 +234,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -270,7 +297,9 @@ jobs:
           path: ${{ steps.delta-prep.outputs.delta-archive-path }}
 
       - name: Compile-delta -- apply onto the restored base (before building)
-        if: github.event_name == 'pull_request' && steps.restore-delta.outputs.matched-key != ''
+        # The shared apply command owns missing/stale payload handling.
+        # Run it on every PR so both backends retain its explicit verdict.
+        if: github.event_name == 'pull_request'
         env:
           PYTHONPATH: .ci-lint
         run: python3 ci/cache_delta.py apply --build-cache-path "${{ steps.setup-soldr.outputs.build-cache-path }}" --delta-archive "${{ steps.delta-prep.outputs.delta-archive-path }}" --base-manifest "${{ steps.delta-prep.outputs.base-manifest-path }}"
@@ -385,9 +414,9 @@ jobs:
 
   dylint:
     name: dylint [${{ fromJSON(needs.precheck.outputs.lane_digests_json).dylint }}]
-    needs: [precheck, cache-maint]
+    needs: [verify, precheck, cache-maint]
     # See `fast`'s identical condition comment above.
-    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && needs.precheck.outputs.dylint_reused != 'true' }}
+    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && needs.precheck.outputs.dylint_reused != 'true' && needs.verify.outputs.skip_dylint != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -464,7 +493,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -573,7 +602,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -698,7 +727,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -815,7 +844,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -943,7 +972,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -1043,7 +1072,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -1083,7 +1112,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -1151,7 +1180,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -1191,7 +1220,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: ${{ always() && github.event.action != 'closed' }}
-    needs: [precheck, fast, dylint, platform-build, platform-run, init, release-verify, publish, perf, reuse-decision]
+    needs: [verify, precheck, fast, dylint, platform-build, platform-run, init, release-verify, publish, perf, reuse-decision]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -1203,14 +1232,16 @@ jobs:
       actions: read
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0 # v7.0.1
 
       # The pinned checkout runs on both GitHub and Bosn → act2.
       - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 

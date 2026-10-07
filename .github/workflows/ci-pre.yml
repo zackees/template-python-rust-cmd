@@ -180,7 +180,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -256,7 +256,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -265,14 +265,14 @@ jobs:
         env:
           PYTHONPATH: .ci-lint
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 -m ci_lint cache trim --repo . --max-deletes 20
+        run: python3 -P -m ci_lint cache trim --repo . --max-deletes 20
 
       - name: Janitor (closed PRs, superseded/retired/undeclared, stale)
         if: github.event_name != 'pull_request' || github.event.action == 'closed'
         env:
           PYTHONPATH: .ci-lint
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 -m ci_lint cache janitor --repo . --max-deletes 100
+        run: python3 -P -m ci_lint cache janitor --repo . --max-deletes 100
 
   # zackees/ci.yml#23 §6: the budget verdict, independent of the janitor
   # (no lock, no `needs:`). Hard failure over `[cache].budget` on main
@@ -297,7 +297,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 0f4fba16eef07d72632d4c6503c252ac99f29856
+          ref: 551cd2f29220787bed92002bf2de5822ae050159
           path: .ci-lint
           persist-credentials: false
 
@@ -307,4 +307,4 @@ jobs:
         env:
           PYTHONPATH: .ci-lint
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 -m ci_lint cache budget --repo .
+        run: python3 -P -m ci_lint cache budget --repo .

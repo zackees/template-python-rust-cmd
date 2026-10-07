@@ -14,7 +14,9 @@ see ci.toml `[tags]`), where a required job whose result is `skipped`
 also counts as success when the plan's `reuse_json` map, live-verified
 against the Actions jobs API (`GITHUB_TOKEN`/`actions: read`), proves it
 is an identical-digest, identical-head-SHA reuse from an earlier run of
-this same PR (zackees/ci.yml#6 round-3A "Reuse verification").
+this same PR (zackees/ci.yml#6 round-3A "Reuse verification"). The shared
+--attested-workflow consumer separately rechecks local attestations using
+the immutable PR base policy; this script does not decide skip eligibility.
 """
 
 from __future__ import annotations
@@ -91,6 +93,8 @@ def main() -> int:
         str(plan_path),
         "--needs",
         str(needs_path),
+        "--attested-workflow",
+        "ci.yml",
     ]
     if reuse_path is not None:
         cmd += ["--reuse", str(reuse_path)]
