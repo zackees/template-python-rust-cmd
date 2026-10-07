@@ -68,6 +68,14 @@ mod tests {
     }
 
     #[test]
+    fn escapes_null_backspace_form_feed_and_carriage_return() {
+        assert_eq!(
+            escape_json_string("\0\u{8}\u{c}\r"),
+            "\\u0000\\u0008\\u000c\\r"
+        );
+    }
+
+    #[test]
     fn leaves_ordinary_text_untouched() {
         assert_eq!(
             escape_json_string("template-core 0.1.0 (linux)"),
