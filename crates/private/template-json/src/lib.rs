@@ -76,6 +76,11 @@ mod tests {
     }
 
     #[test]
+    fn escapes_last_control_without_changing_unicode_or_delete() {
+        assert_eq!(escape_json_string("\u{1f}\u{7f}λ🦀"), "\\u001f\u{7f}λ🦀");
+    }
+
+    #[test]
     fn leaves_ordinary_text_untouched() {
         assert_eq!(
             escape_json_string("template-core 0.1.0 (linux)"),
