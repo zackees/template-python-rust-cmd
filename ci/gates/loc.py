@@ -45,6 +45,7 @@ SOURCE_EXTS = {
 
 EXCLUDED = {
     ".git",
+    ".ci-lint",  # Downloaded third-party checker, not repository source.
     "target",
     ".cargo",
     ".rustup",

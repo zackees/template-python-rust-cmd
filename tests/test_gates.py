@@ -80,7 +80,9 @@ def test_gate_run_returns_int_annotation(name: str) -> None:
     )
 
 
-def test_loc_excludes_ci_lint_but_checks_repository_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_loc_excludes_ci_lint_but_checks_repository_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Precheck downloads third-party code; it must not change our LOC verdict."""
     from ci.gates import loc
 

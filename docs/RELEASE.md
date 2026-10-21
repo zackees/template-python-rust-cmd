@@ -85,7 +85,7 @@ keeps `crates/template-cli` in the sdist's workspace `members`.
 4. Also build the wheel **from the sdist** (proves the sdist alone —
    not just the working tree — produces a working wheel):
    ```
-   uv build --wheel --sdist-fallback   # or: unpack dist/*.tar.gz and `uv build --wheel` inside it
+   uv build --wheel dist/template_python_rust_cmd-0.1.0.tar.gz  # use the actual sdist filename
    ```
 5. Inspect the wheel with Python's `zipfile` module: confirm
    `*.data/scripts/template-cli` is present and its first bytes are an
