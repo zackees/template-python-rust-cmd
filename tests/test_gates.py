@@ -78,3 +78,18 @@ def test_gate_run_returns_int_annotation(name: str) -> None:
     assert ann in (int, "int"), (
         f"ci.gates.{name}.run should be annotated `-> int` (got {ann!r})"
     )
+
+
+def test_loc_excludes_ci_lint_but_checks_repository_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Precheck downloads third-party code; it must not change our LOC verdict."""
+    from ci.gates import loc
+
+    monkeypatch.setattr(loc, "ROOT", tmp_path)
+    checkout = tmp_path / ".ci-lint"
+    checkout.mkdir()
+    (checkout / "external.py").write_text("# external\n" * (loc.ERROR + 1))
+    source = tmp_path / "source.py"
+    source.write_text("# source\n")
+    assert loc.run() == 0
+    source.write_text("# source\n" * (loc.ERROR + 1))
+    assert loc.run() == 1
