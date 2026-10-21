@@ -84,7 +84,7 @@ def test_loc_excludes_ci_lint_but_checks_repository_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Precheck downloads third-party code; it must not change our LOC verdict."""
-    from ci.gates import loc
+    loc = importlib.import_module("ci.gates.loc")
 
     monkeypatch.setattr(loc, "ROOT", tmp_path)
     checkout = tmp_path / ".ci-lint"
