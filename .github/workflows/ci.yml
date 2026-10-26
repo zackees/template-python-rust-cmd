@@ -1088,7 +1088,10 @@ jobs:
   publish:
     name: publish
     needs: [precheck, release-verify]
-    if: ${{ !cancelled() && !failure() && github.event.action != 'closed' && fromJSON(needs.precheck.outputs.plan).publish == 'mock' }}
+    # `github.event_name == 'workflow_dispatch'` makes the confinement literal
+    # (GATE-012: an `id-token: write` job never gates a PR) instead of
+    # resting on the plan alone; oidc-check below expects that event anyway.
+    if: ${{ !cancelled() && !failure() && github.event_name == 'workflow_dispatch' && fromJSON(needs.precheck.outputs.plan).publish == 'mock' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: pypi
