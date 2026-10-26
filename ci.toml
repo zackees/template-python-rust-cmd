@@ -92,8 +92,12 @@ budget  = { warm = "115s", cold = "235s" }  # round 3B's own cold numbers; round
 # ── Suites ───────────────────────────────────────────────────────────────────
 # Each id generates [ci-test-<id>] and [no-test-<id>]. A skip inside a required suite is a failure.
 [suites]
-unit        = { run = "ci/test.py unit",        required = true }
-smoke       = { run = "ci/wheel.py smoke",      required = true }    # clean venv: import + native CLI
+# `run` names the real entry point (ci/test.py and ci/wheel.py never existed;
+# template#50, GEN-003). `unit` is `ci/fast.py rust-test` plus `ci/fast.py
+# python-test`; `smoke` is the fast lane's clean-venv wheel install, repeated
+# per platform by `ci/platform_run.py wheel-install`.
+unit        = { run = "ci/fast.py rust-test",   required = true }
+smoke       = { run = "ci/fast.py wheel-install", required = true }  # clean venv: import + native CLI
 integration = { run = "pytest -m integration tests/integration" }
 init        = { run = "ci/instantiate.py",      cache = "none" }     # from zero: proves caches mask nothing (ci/instantiate.py -> ci_lint precheck -> ci/init.py build/wheel-build/wheel-install/wheel-smoke, the `init` job)
 perf        = { run = "ci/perf.py",             kind = "bench", gating = false }
