@@ -8,7 +8,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from ci import instantiate  # noqa: E402
+from ci import instantiate  # noqa: E402  # pylint: disable=wrong-import-position
 
 
 def test_copy_tree_keeps_cargo_config_but_not_state(tmp_path: Path) -> None:
@@ -22,7 +22,7 @@ def test_copy_tree_keeps_cargo_config_but_not_state(tmp_path: Path) -> None:
     (src / ".cargo" / "credentials.toml").write_text("secret")
     dst = tmp_path / "out"
 
-    instantiate._copy_tree(src, dst)
+    instantiate._copy_tree(src, dst)  # pylint: disable=protected-access
 
     out_cargo = dst / "dylints" / "platform_boundary" / ".cargo"
     assert "linker=dylint-link" in (out_cargo / "config.toml").read_text()
