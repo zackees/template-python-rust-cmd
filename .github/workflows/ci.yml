@@ -17,6 +17,10 @@ name: ci
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited, closed]
+  # GEN-022 (zackees/ci.yml#405/#432): main merges through a merge queue;
+  # the queue's `CI OK` comes from this run. The planner maps the event to
+  # the `pr` flow (zackees/ci.yml#473, why the linter pin moved past it).
+  merge_group:
   push:
     branches: [main]
   schedule:
@@ -46,6 +50,29 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # zackees/ci.yml#409 (GEN-022): a queue ref carries the base commit
+  # (gh-readonly-queue/main/pr-<N>-<sha>), so the concurrency group above
+  # never pairs a PR's rebuilt queue run with the one main's movement
+  # replaced; this cancels the older one. No `needs:`; only the end-of-queue
+  # janitor (which waits on every job by GEN-022's own rule) waits on it.
+  cancel-superseded:
+    name: Cancel superseded queue runs
+    if: ${{ !cancelled() && github.event_name == 'merge_group' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Cancel superseded merge-queue runs for this PR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 ci/cancel_superseded.py
+
   verify:
     name: Verify local attestation
     runs-on: ubuntu-24.04
@@ -63,7 +90,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
       - name: Verify local gate and decide per-job skips
@@ -125,7 +152,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -184,7 +211,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -241,7 +268,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -500,7 +527,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -610,7 +637,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -735,7 +762,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -850,7 +877,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -978,7 +1005,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -1078,7 +1105,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -1118,7 +1145,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -1186,7 +1213,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -1247,7 +1274,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zackees/ci.yml
-          ref: 551cd2f29220787bed92002bf2de5822ae050159
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
           path: .ci-lint
           persist-credentials: false
 
@@ -1273,3 +1300,45 @@ jobs:
           # ci_lint gate --reuse's live verification.
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 ci/ci_ok.py
+
+  # GEN-022 (zackees/ci.yml#405): the merge-queue run ends with the cache
+  # janitor. The queue serializes main's cache writes, so this last job has
+  # exclusive access and evicts by LRU before GitHub's own eviction picks.
+  # Same repo-wide non-cancelling `cache-janitor` group as ci-pre.yml's
+  # janitor, so the two never race.
+  queue-janitor:
+    name: queue-janitor
+    if: ${{ always() && github.event_name == 'merge_group' }}
+    # GEN-022 counts transitive needs: `ci-ok` already waits on every
+    # validation job, so these two cover the whole run.
+    needs: [cancel-superseded, ci-ok]
+    env:
+      CI_REMOTE_ONLY: Maintains live GitHub Actions caches; local build caches are audited separately
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: cache-janitor
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The pinned checkout runs on both GitHub and Bosn → act2.
+      - name: Checkout ci-lint (zackees/ci.yml, pinned -- ci.toml `linter`)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zackees/ci.yml
+          ref: 928cbbdde8751fe45a4dee95f59d0fb5542c3052
+          path: .ci-lint
+          persist-credentials: false
+
+      - name: Janitor (end of queue run)
+        env:
+          PYTHONPATH: .ci-lint
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -P -m ci_lint cache janitor --repo . --max-deletes 100

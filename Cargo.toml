@@ -33,6 +33,11 @@ unwrap_used = "deny"
 unwrap_in_result = "deny"
 panic_in_result_fn = "deny"
 expect_used = "warn"
+# Async guard lints (zackees/ci.yml#413, RUST-019): a lock or RefCell borrow
+# held across .await can deadlock the runtime; pedantic, so opt in at deny.
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+await_holding_invalid_type = "deny"
 # Function-complexity ratchet (zackees/ci.yml#229, RUST-018): clippy's default
 # ceilings (cognitive 25, 100 lines). A function over one carries
 # `#[expect(clippy::<lint>, reason = "...")]`, never `allow`.
