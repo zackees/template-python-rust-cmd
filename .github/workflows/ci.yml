@@ -516,19 +516,20 @@ jobs:
           # #6 §9's cache-strategy notes), so restoring against a
           # dev-profile key here is a natural miss, never a corrupt hit.
           prebuild-deps-flags: ${{ needs.precheck.outputs.is-release == 'true' && '--release' || '' }}
-          # Never saved for a release-profile compile: CACHE-004's budget
-          # proof only accounts for one profile's worth of `deps`/
-          # `compile` cardinality per platform (ci.toml [cache.family]).
-          # This expression stays "plan"-shaped (CACHE-009) -- it always
-          # evaluates false when is-release, and otherwise is identical to
-          # every other job's plain cache_save passthrough.
-          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+          # A release-profile compile is saved ONLY on the nightly
+          # `schedule` event (zackees/ci.yml#45: per-platform caches must
+          # be saved on nightly), never on a `[release]` PR rehearsal or a
+          # real `workflow_dispatch` release. Previously `is-release`
+          # masked the save on nightly too, so every platform-build leg
+          # logged `build=miss/skipped by save-cache policy` forever.
+          # Still "plan"-shaped (CACHE-009): cache_save gates it first.
+          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && (needs.precheck.outputs.is-release != 'true' || github.event_name == 'schedule') }}
           cache-key-pr: ${{ needs.precheck.outputs.cache_key_pr }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && (needs.precheck.outputs.is-release != 'true' || github.event_name == 'schedule') }}
           cache-suffix: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.cache_key_pr || '' }}
 
       - name: Build + capture compiler-artifact JSON (cross target)
@@ -752,16 +753,15 @@ jobs:
           ci-tests: "true"
           prebuild-deps-flags: "--release"
           cache-key-suffix: "release"
-          # Never saved -- see platform-build's identical note (CACHE-004
-          # budget proof doesn't account for a second, release-profile
-          # generation of `deps`/`compile`).
-          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+          # Saved only on the nightly `schedule` event -- see
+          # platform-build's identical note (zackees/ci.yml#45).
+          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && (needs.precheck.outputs.is-release != 'true' || github.event_name == 'schedule') }}
           cache-key-pr: ${{ needs.precheck.outputs.cache_key_pr }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.is-release != 'true' }}
+          save-cache: ${{ needs.precheck.outputs.cache_save == 'true' && (needs.precheck.outputs.is-release != 'true' || github.event_name == 'schedule') }}
           cache-suffix: ${{ needs.precheck.outputs.cache_save == 'true' && needs.precheck.outputs.cache_key_pr || '' }}
 
       - name: Build sdist (Soldr PEP 517 backend) + release wheel (soldr wheel --release, manylinux_2_17)
