@@ -55,7 +55,8 @@ workflow files) may do and decides what each run selects.
   delegates execution or fresh-result reuse to the shared attestation gate;
   success amends HEAD with proof trailers. See the authoritative
   [local-loop contract](CLAUDE.md#ci).
-  `--lanes fast` selects a diagnostic job; `--title "[ci-full] ..."`
+  `--lanes fast` selects a diagnostic job (lint jobs are refused: lint
+  runs only through host `soldr lint`); `--title "[ci-full] ..." --lanes fast`
   selects the same title-driven coverage as the remote workflow.
 
 ## Repo Layout

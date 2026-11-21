@@ -80,3 +80,8 @@ targets = [
 # `soldr ci-test` discover it.
 [workspace.metadata.dylint]
 libraries = [{ path = "dylints/platform_boundary" }]
+
+# `soldr lint` (the local-gate `lint` lane; lint never runs under Bosn):
+# rustfmt check, Clippy, then every Dylint library declared above.
+[workspace.metadata.soldr.lint]
+steps = ["fmt", "clippy", "dylint"]
