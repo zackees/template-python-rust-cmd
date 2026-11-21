@@ -307,6 +307,13 @@ issue   = "https://github.com/forge-ci/ci.yml/issues/480"
 expires = "2026-12-31"
 
 [[exceptions]]
+rule    = "GEN-004"
+path    = ".github/workflows/ci.yml"
+reason  = "Lint never runs under bosn: ruff/pylint (with fmt/clippy) run in the plan-required dylint job and the host lint lane, because the local gate replays jobs.fast under bosn; GEN-004 hard-codes jobs.fast"
+issue   = "https://github.com/zackees/template-python-rust-cmd/issues/82"
+expires = "2026-12-31"
+
+[[exceptions]]
 rule    = "ACT-002"
 path    = "ci/localrun/act_inner.py"
 reason  = "The local act lane predates act2/bosn ci run; migrating the act-run plumbing is its own change"
